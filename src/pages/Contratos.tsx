@@ -28,6 +28,7 @@ import {
   createEmptyContractForm,
   createEmptyService,
   createId,
+  getServiceUnitValue,
   loadContracts,
   saveContracts,
   serviceUnitOptions,
@@ -116,11 +117,14 @@ export function Contratos() {
     setFormData({
       name: contract.name,
       client: contract.client,
+      workingDaysDeadline: contract.workingDaysDeadline,
       startDate: contract.startDate,
       expectedEndDate: contract.expectedEndDate,
+      updatedReferenceDate: contract.updatedReferenceDate,
       status: contract.status,
       team: contract.team,
       employeeCount: contract.employeeCount,
+      observations: contract.observations,
       services: contract.services.length
         ? contract.services
         : [createEmptyService()],
@@ -151,14 +155,20 @@ export function Contratos() {
       ...formData,
       name: formData.name.trim(),
       client: formData.client.trim(),
+      workingDaysDeadline: Number(formData.workingDaysDeadline) || 0,
+      updatedReferenceDate: formData.updatedReferenceDate,
       team: formData.team.trim(),
       employeeCount: Number(formData.employeeCount),
+      observations: formData.observations.trim(),
       services: formData.services.map((service) => ({
         ...service,
+        code: service.code.trim(),
         name: service.name.trim(),
+        description: service.description.trim(),
         unit: service.unit.trim(),
         totalQuantity: Number(service.totalQuantity),
-        unitValue: Number(service.unitValue),
+        contractValue: Number(service.contractValue),
+        monthlyGoal: Number(service.monthlyGoal),
         dailyGoal: Number(service.dailyGoal),
       })),
     }
@@ -247,6 +257,7 @@ export function Contratos() {
                     <TableHead>Nome</TableHead>
                     <TableHead>Cliente</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Prazo</TableHead>
                     <TableHead>Equipe</TableHead>
                     <TableHead>Funcionários</TableHead>
                     <TableHead>Serviços</TableHead>
@@ -270,6 +281,9 @@ export function Contratos() {
                         <Badge variant="secondary">
                           {statusLabelByValue[contract.status]}
                         </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {contract.workingDaysDeadline || "-"} dias úteis
                       </TableCell>
                       <TableCell>{contract.team}</TableCell>
                       <TableCell>{contract.employeeCount}</TableCell>
@@ -378,7 +392,7 @@ export function Contratos() {
                   </Field>
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-4 sm:grid-cols-3">
                   <Field>
                     <FieldLabel htmlFor="contract-status">Status</FieldLabel>
                     <select
@@ -400,8 +414,25 @@ export function Contratos() {
                     </select>
                   </Field>
                   <Field>
+                    <FieldLabel htmlFor="contract-working-days">
+                      Prazo útil
+                    </FieldLabel>
+                    <Input
+                      id="contract-working-days"
+                      type="number"
+                      min="0"
+                      value={formData.workingDaysDeadline}
+                      onChange={(event) =>
+                        updateField(
+                          "workingDaysDeadline",
+                          Number(event.target.value)
+                        )
+                      }
+                    />
+                  </Field>
+                  <Field>
                     <FieldLabel htmlFor="contract-employee-count">
-                      Quantidade de funcionários
+                      Funcionários
                     </FieldLabel>
                     <Input
                       id="contract-employee-count"
@@ -423,6 +454,35 @@ export function Contratos() {
                     value={formData.team}
                     onChange={(event) => updateField("team", event.target.value)}
                     required
+                  />
+                </Field>
+
+                <Field>
+                  <FieldLabel htmlFor="contract-updated-reference">
+                    Data de atualização
+                  </FieldLabel>
+                  <Input
+                    id="contract-updated-reference"
+                    type="date"
+                    value={formData.updatedReferenceDate}
+                    onChange={(event) =>
+                      updateField("updatedReferenceDate", event.target.value)
+                    }
+                  />
+                </Field>
+
+                <Field>
+                  <FieldLabel htmlFor="contract-observations">
+                    Observações
+                  </FieldLabel>
+                  <textarea
+                    id="contract-observations"
+                    className="min-h-20 w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                    value={formData.observations}
+                    onChange={(event) =>
+                      updateField("observations", event.target.value)
+                    }
+                    placeholder="Observações operacionais do contrato"
                   />
                 </Field>
               </FieldGroup>
@@ -463,21 +523,61 @@ export function Contratos() {
                         </Button>
                       </div>
 
+                      <div className="grid gap-4 sm:grid-cols-[120px_1fr]">
+                        <Field>
+                          <FieldLabel htmlFor={`service-${service.id}-code`}>
+                            Item
+                          </FieldLabel>
+                          <Input
+                            id={`service-${service.id}-code`}
+                            value={service.code}
+                            onChange={(event) =>
+                              updateServiceField(
+                                service.id,
+                                "code",
+                                event.target.value
+                              )
+                            }
+                            placeholder="Item 1"
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor={`service-${service.id}-name`}>
+                            Nome
+                          </FieldLabel>
+                          <Input
+                            id={`service-${service.id}-name`}
+                            value={service.name}
+                            onChange={(event) =>
+                              updateServiceField(
+                                service.id,
+                                "name",
+                                event.target.value
+                              )
+                            }
+                            required
+                          />
+                        </Field>
+                      </div>
+
                       <Field>
-                        <FieldLabel htmlFor={`service-${service.id}-name`}>
-                          Nome
+                        <FieldLabel
+                          htmlFor={`service-${service.id}-description`}
+                        >
+                          Descrição
                         </FieldLabel>
-                        <Input
-                          id={`service-${service.id}-name`}
-                          value={service.name}
+                        <textarea
+                          id={`service-${service.id}-description`}
+                          className="min-h-16 w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                          value={service.description}
                           onChange={(event) =>
                             updateServiceField(
                               service.id,
-                              "name",
+                              "description",
                               event.target.value
                             )
                           }
-                          required
+                          placeholder="Detalhe contratual ou observação do item"
                         />
                       </Field>
 
@@ -532,24 +632,48 @@ export function Contratos() {
                       <div className="grid gap-4 sm:grid-cols-2">
                         <Field>
                           <FieldLabel htmlFor={`service-${service.id}-value`}>
-                            Valor unitário
+                            Valor contratado
                           </FieldLabel>
                           <Input
                             id={`service-${service.id}-value`}
                             type="number"
                             min="0"
                             step="0.01"
-                            value={service.unitValue}
+                            value={service.contractValue}
                             onChange={(event) =>
                               updateServiceField(
                                 service.id,
-                                "unitValue",
+                                "contractValue",
                                 Number(event.target.value)
                               )
                             }
                             required
                           />
                         </Field>
+                        <Field>
+                          <FieldLabel
+                            htmlFor={`service-${service.id}-monthly-goal`}
+                          >
+                            Meta mensal
+                          </FieldLabel>
+                          <Input
+                            id={`service-${service.id}-monthly-goal`}
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={service.monthlyGoal}
+                            onChange={(event) =>
+                              updateServiceField(
+                                service.id,
+                                "monthlyGoal",
+                                Number(event.target.value)
+                              )
+                            }
+                          />
+                        </Field>
+                      </div>
+
+                      <div className="grid gap-4 sm:grid-cols-2">
                         <Field>
                           <FieldLabel htmlFor={`service-${service.id}-goal`}>
                             Meta diária
@@ -570,6 +694,14 @@ export function Contratos() {
                             required
                           />
                         </Field>
+                        <div className="rounded-lg border bg-background p-3 text-sm">
+                          <p className="text-xs text-muted-foreground">
+                            Valor unitário calculado
+                          </p>
+                          <p className="mt-1 font-semibold">
+                            {currencyFormatter.format(getServiceUnitValue(service))}
+                          </p>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -626,8 +758,14 @@ export function Contratos() {
                       </div>
                       <div className="mt-2 grid grid-cols-3 gap-2 text-xs text-muted-foreground">
                         <span>Total: {service.totalQuantity}</span>
-                        <span>{currencyFormatter.format(service.unitValue)}</span>
+                        <span>{currencyFormatter.format(service.contractValue)}</span>
                         <span>Meta: {service.dailyGoal}</span>
+                      </div>
+                      <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                        <span>Mensal: {service.monthlyGoal}</span>
+                        <span>
+                          Unit.: {currencyFormatter.format(getServiceUnitValue(service))}
+                        </span>
                       </div>
                     </div>
                   ))}

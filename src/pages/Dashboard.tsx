@@ -1,4 +1,4 @@
-import { AlertTriangle, BarChart3, Briefcase, TrendingUp } from "lucide-react"
+import { AlertTriangle, BarChart3, Briefcase, Fuel, TrendingUp } from "lucide-react"
 
 import { MetricCard } from "@/components/MetricCard"
 import { PageHeader } from "@/components/PageHeader"
@@ -16,18 +16,22 @@ import {
   buildContractSummaries,
   buildReportRows,
   currencyFormatter,
+  getFuelTotals,
   getPerformanceLabel,
   getStatusClassName,
   numberFormatter,
 } from "@/lib/analytics"
 import { loadContracts } from "@/lib/contracts"
 import { loadDailyExecutions } from "@/lib/daily-executions"
+import { loadFuelEntries } from "@/lib/fuel"
 
 function getDashboardData() {
   const contracts = loadContracts()
   const executions = loadDailyExecutions()
+  const fuelEntries = loadFuelEntries()
   const summaries = buildContractSummaries(contracts, executions)
   const rows = buildReportRows(contracts, executions)
+  const fuelTotals = getFuelTotals(fuelEntries)
 
   const activeContracts = contracts.filter(
     (contract) => contract.status === "ativo"
@@ -65,10 +69,11 @@ function getDashboardData() {
     activeContracts,
     plannedValue,
     realizedValue,
-    financialDifference: realizedValue - plannedValue,
+    financialBalance: plannedValue - realizedValue,
     percentExecuted,
     productivity,
     alerts,
+    fuelTotals,
   }
 }
 
@@ -119,23 +124,23 @@ export function Dashboard() {
 
         <MetricCard
           title="Valor planejado"
-          description="Quantidade total x valor unitário"
+          description="Valor contratado"
           value={currencyFormatter.format(data.plannedValue)}
         />
 
         <MetricCard
           title="Valor realizado"
-          description="Realizado acumulado x valor unitário"
+          description="Executado físico x valor unitário"
           value={currencyFormatter.format(data.realizedValue)}
         />
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-3">
+      <section className="grid gap-4 lg:grid-cols-4">
         <MetricCard
-          title="Diferença financeira"
-          description="Realizado menos planejado"
-          value={currencyFormatter.format(data.financialDifference)}
-          tone={data.financialDifference < 0 ? "danger" : "positive"}
+          title="Saldo financeiro"
+          description="Contratado menos executado"
+          value={currencyFormatter.format(data.financialBalance)}
+          tone={data.financialBalance < 0 ? "danger" : "positive"}
         />
 
         <MetricCard
@@ -156,6 +161,13 @@ export function Dashboard() {
             }
           />
         </MetricCard>
+
+        <MetricCard
+          title="Combustível"
+          description={`${numberFormatter.format(data.fuelTotals.liters)} litros lançados`}
+          value={currencyFormatter.format(data.fuelTotals.totalValue)}
+          icon={Fuel}
+        />
 
         <Card className="rounded-lg border-[#d7e5e5] shadow-[0_12px_36px_rgba(12,55,56,0.06)]">
           <CardHeader>
@@ -224,7 +236,7 @@ export function Dashboard() {
           <CardContent className="flex flex-col gap-4">
             <div>
               <div className="mb-2 flex justify-between gap-3 text-sm">
-                <span>Planejado</span>
+                <span>Contratado</span>
                 <span>{currencyFormatter.format(data.plannedValue)}</span>
               </div>
               <MetricBar value={100} className="bg-[#0f7772]" />

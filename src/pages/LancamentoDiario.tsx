@@ -300,6 +300,9 @@ export function LancamentoDiario() {
                   const realizedDaily = Number(item.realizedDaily) || 0
                   const dailyGoal = Number(item.dailyGoal) || 0
                   const isBelowGoal = realizedDaily < dailyGoal
+                  const dailyDifference = realizedDaily - dailyGoal
+                  const dailyPercentage =
+                    dailyGoal > 0 ? (realizedDaily / dailyGoal) * 100 : 0
                   const projectedTotal =
                     Number(item.completedQuantity) +
                     realizedDaily -
@@ -311,6 +314,8 @@ export function LancamentoDiario() {
                     item.totalQuantity > 0
                       ? (projectedTotal / item.totalQuantity) * 100
                       : 0
+                  const physicalBalance =
+                    (Number(item.totalQuantity) || 0) - projectedTotal
 
                   return (
                     <Card key={item.serviceId} className="rounded-lg">
@@ -321,7 +326,7 @@ export function LancamentoDiario() {
                         </CardDescription>
                       </CardHeader>
                       <CardContent className="flex flex-col gap-4">
-                        <div className="grid grid-cols-3 gap-3">
+                        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                           <div className="rounded-lg border bg-muted/20 p-3">
                             <p className="text-xs text-muted-foreground">
                               Total
@@ -344,6 +349,30 @@ export function LancamentoDiario() {
                             </p>
                             <p className="font-semibold">
                               {percentFormatter.format(progress)}%
+                            </p>
+                          </div>
+                          <div className="rounded-lg border bg-muted/20 p-3">
+                            <p className="text-xs text-muted-foreground">
+                              Saldo
+                            </p>
+                            <p className="font-semibold">
+                              {percentFormatter.format(physicalBalance)} {item.unit}
+                            </p>
+                          </div>
+                          <div className="rounded-lg border bg-muted/20 p-3">
+                            <p className="text-xs text-muted-foreground">
+                              Meta x realizado
+                            </p>
+                            <p className="font-semibold">
+                              {percentFormatter.format(dailyPercentage)}%
+                            </p>
+                          </div>
+                          <div className="rounded-lg border bg-muted/20 p-3">
+                            <p className="text-xs text-muted-foreground">
+                              Diferença
+                            </p>
+                            <p className="font-semibold">
+                              {percentFormatter.format(dailyDifference)} {item.unit}
                             </p>
                           </div>
                         </div>

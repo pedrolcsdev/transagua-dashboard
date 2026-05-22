@@ -25,6 +25,8 @@ import {
 } from "@/components/ui/table"
 import {
   buildReportRows,
+  currencyFormatter,
+  getFuelTotals,
   getPerformanceLabel,
   getStatusClassName,
   isWithinPeriod,
@@ -33,6 +35,7 @@ import {
 } from "@/lib/analytics"
 import { loadContracts } from "@/lib/contracts"
 import { loadDailyExecutions } from "@/lib/daily-executions"
+import { fuelTypeOptions, getFuelEntryTotal, loadFuelEntries } from "@/lib/fuel"
 
 const statusOptions: Array<{
   value: PerformanceStatus | "all" | "reviewed" | "pending-review"
@@ -49,9 +52,11 @@ const statusOptions: Array<{
 function getReportData() {
   const contracts = loadContracts()
   const executions = loadDailyExecutions()
+  const fuelEntries = loadFuelEntries()
 
   return {
     contracts,
+    fuelEntries,
     rows: buildReportRows(contracts, executions),
   }
 }
@@ -65,6 +70,7 @@ export function Relatorios() {
   const [status, setStatus] = useState<
     PerformanceStatus | "all" | "reviewed" | "pending-review"
   >("all")
+  const [fuelType, setFuelType] = useState("all")
 
   const services = useMemo(
     () =>
@@ -113,19 +119,37 @@ export function Relatorios() {
 
   const percentage = totals.meta > 0 ? (totals.realized / totals.meta) * 100 : 0
 
+  const filteredFuelEntries = useMemo(
+    () =>
+      data.fuelEntries.filter((entry) => {
+        const matchesContract =
+          contractId === "all" || entry.contractId === contractId
+        const matchesPeriod = isWithinPeriod(entry.date, startDate, endDate)
+        const matchesFuelType = fuelType === "all" || entry.fuelType === fuelType
+
+        return matchesContract && matchesPeriod && matchesFuelType
+      }),
+    [contractId, data.fuelEntries, endDate, fuelType, startDate]
+  )
+
+  const fuelTotals = useMemo(
+    () => getFuelTotals(filteredFuelEntries),
+    [filteredFuelEntries]
+  )
+
   const distribution = [
     {
-      label: "Verde",
+      label: "Concluído",
       value: filteredRows.filter((row) => row.status === "green").length,
       colorClassName: "bg-emerald-500",
     },
     {
-      label: "Amarelo",
+      label: "Atenção",
       value: filteredRows.filter((row) => row.status === "yellow").length,
       colorClassName: "bg-amber-500",
     },
     {
-      label: "Vermelho",
+      label: "Crítico",
       value: filteredRows.filter((row) => row.status === "red").length,
       colorClassName: "bg-red-500",
     },
@@ -159,7 +183,7 @@ export function Relatorios() {
           <CardDescription>Refine a visão do relatório operacional.</CardDescription>
         </CardHeader>
         <CardContent>
-          <FieldGroup className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+          <FieldGroup className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
             <Field>
               <FieldLabel htmlFor="report-contract">Contrato</FieldLabel>
               <select
@@ -245,6 +269,23 @@ export function Relatorios() {
                 ))}
               </select>
             </Field>
+
+            <Field>
+              <FieldLabel htmlFor="report-fuel">Combustível</FieldLabel>
+              <select
+                id="report-fuel"
+                className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                value={fuelType}
+                onChange={(event) => setFuelType(event.target.value)}
+              >
+                <option value="all">Todos</option>
+                {fuelTypeOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
           </FieldGroup>
         </CardContent>
       </Card>
@@ -254,6 +295,24 @@ export function Relatorios() {
         <MetricCard title="Realizado" description="Produção filtrada" value={numberFormatter.format(totals.realized)} />
         <MetricCard title="Percentual" description="Realizado / meta" value={`${numberFormatter.format(percentage)}%`} />
         <MetricCard title="Diferença" description="Realizado - meta" value={numberFormatter.format(totals.difference)} tone={totals.difference < 0 ? "danger" : "positive"} />
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-3">
+        <MetricCard
+          title="Combustível"
+          description="Custo filtrado"
+          value={currencyFormatter.format(fuelTotals.totalValue)}
+        />
+        <MetricCard
+          title="Litros"
+          description="Gasolina + diesel"
+          value={numberFormatter.format(fuelTotals.liters)}
+        />
+        <MetricCard
+          title="Registros de frota"
+          description="Abastecimentos filtrados"
+          value={filteredFuelEntries.length}
+        />
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[1fr_1fr]">
@@ -353,6 +412,67 @@ export function Relatorios() {
                     <TableCell>{row.deviationReason || "-"}</TableCell>
                   </TableRow>
                 ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-lg border-[#d7e5e5] shadow-[0_12px_36px_rgba(12,55,56,0.06)]">
+        <CardHeader>
+          <CardTitle>Abastecimento</CardTitle>
+          <CardDescription>
+            Custos operacionais por contrato, combustível, equipamento e período.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {filteredFuelEntries.length === 0 ? (
+            <EmptyState
+              icon={ClipboardList}
+              title="Nenhum abastecimento encontrado"
+              description="Os lançamentos de combustível compatíveis com os filtros aparecerão aqui."
+            />
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Data</TableHead>
+                  <TableHead>Contrato</TableHead>
+                  <TableHead>Equipamento</TableHead>
+                  <TableHead>Combustível</TableHead>
+                  <TableHead>Litros</TableHead>
+                  <TableHead>Valor</TableHead>
+                  <TableHead>Saldo devedor</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredFuelEntries.map((entry) => {
+                  const contract = data.contracts.find(
+                    (item) => item.id === entry.contractId
+                  )
+
+                  return (
+                    <TableRow key={entry.id}>
+                      <TableCell>{entry.date}</TableCell>
+                      <TableCell>{contract?.name ?? "-"}</TableCell>
+                      <TableCell>{entry.equipment}</TableCell>
+                      <TableCell>
+                        {
+                          fuelTypeOptions.find(
+                            (option) => option.value === entry.fuelType
+                          )?.label
+                        }
+                      </TableCell>
+                      <TableCell>{numberFormatter.format(entry.liters)}</TableCell>
+                      <TableCell>
+                        {currencyFormatter.format(getFuelEntryTotal(entry))}
+                      </TableCell>
+                      <TableCell>
+                        {currencyFormatter.format(entry.outstandingBalance)}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
               </TableBody>
             </Table>
           )}

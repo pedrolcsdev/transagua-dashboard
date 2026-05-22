@@ -17,6 +17,7 @@ import {
   type UserProfile,
 } from "@/lib/profile"
 import { Contratos } from "@/pages/Contratos"
+import { Abastecimento } from "@/pages/Abastecimento"
 import { Dashboard } from "@/pages/Dashboard"
 import { LancamentoDiario } from "@/pages/LancamentoDiario"
 import { Relatorios } from "@/pages/Relatorios"
@@ -51,6 +52,7 @@ function ShellRoutes() {
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/contratos" element={<Contratos />} />
+        <Route path="/abastecimento" element={<Abastecimento />} />
         <Route path="/lancamento-diario" element={<LancamentoDiario />} />
         <Route path="/revisao" element={<Revisao />} />
         <Route path="/relatorios" element={<Relatorios />} />

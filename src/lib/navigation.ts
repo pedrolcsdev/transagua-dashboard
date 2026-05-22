@@ -4,6 +4,7 @@ import {
   ClipboardCheck,
   ClipboardList,
   FileText,
+  Fuel,
   HardHat,
   Users,
 } from "lucide-react"
@@ -20,6 +21,7 @@ export const allNavigationItems: NavItem[] = [
   { label: "Dashboard", path: "/dashboard", icon: BarChart3 },
   { label: "Contratos", path: "/contratos", icon: FileText },
   { label: "Lançamento Diário", path: "/lancamento-diario", icon: HardHat },
+  { label: "Abastecimento", path: "/abastecimento", icon: Fuel },
   { label: "Revisão", path: "/revisao", icon: ClipboardCheck },
   { label: "Relatórios", path: "/relatorios", icon: ClipboardList },
   { label: "Usuários", path: "/usuarios", icon: Users },
@@ -33,12 +35,14 @@ export const navigationByProfile: Record<UserProfile, NavItem[]> = {
   leader: [
     navigationByPath["/dashboard"],
     navigationByPath["/lancamento-diario"],
+    navigationByPath["/abastecimento"],
     navigationByPath["/revisao"],
   ],
   manager: allNavigationItems,
   director: [
     navigationByPath["/dashboard"],
     navigationByPath["/relatorios"],
+    navigationByPath["/abastecimento"],
     navigationByPath["/revisao"],
   ],
 }

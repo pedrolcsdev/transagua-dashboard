@@ -1,9 +1,11 @@
 import type { Contract, ContractService } from "@/lib/contracts"
+import { getServiceUnitValue } from "@/lib/contracts"
 import {
   deviationReasonOptions,
   type DailyExecution,
   type DailyExecutionItem,
 } from "@/lib/daily-executions"
+import { getFuelEntryTotal, type FuelEntry } from "@/lib/fuel"
 
 export type PerformanceStatus = "green" | "yellow" | "red" | "no-goal"
 
@@ -34,6 +36,9 @@ export type ContractSummary = {
   plannedValue: number
   realizedValue: number
   percentExecuted: number
+  percentFinancial: number
+  physicalBalance: number
+  financialBalance: number
 }
 
 export const currencyFormatter = new Intl.NumberFormat("pt-BR", {
@@ -72,7 +77,7 @@ export function getPerformanceStatus(
 
 export function getPerformanceLabel(status: PerformanceStatus) {
   const labels: Record<PerformanceStatus, string> = {
-    green: "Dentro da meta",
+    green: "Concluído",
     yellow: "Atenção",
     red: "Crítico",
     "no-goal": "Sem meta",
@@ -109,7 +114,7 @@ export function getServiceRealizedQuantity(
 }
 
 export function getServicePlannedValue(service: ContractService) {
-  return (Number(service.totalQuantity) || 0) * (Number(service.unitValue) || 0)
+  return Number(service.contractValue) || 0
 }
 
 export function getServiceRealizedValue(
@@ -119,7 +124,29 @@ export function getServiceRealizedValue(
 ) {
   return (
     getServiceRealizedQuantity(contractId, service.id, executions) *
-    (Number(service.unitValue) || 0)
+    getServiceUnitValue(service)
+  )
+}
+
+export function getServicePhysicalBalance(
+  contractId: string,
+  service: ContractService,
+  executions: DailyExecution[]
+) {
+  return (
+    (Number(service.totalQuantity) || 0) -
+    getServiceRealizedQuantity(contractId, service.id, executions)
+  )
+}
+
+export function getServiceFinancialBalance(
+  contractId: string,
+  service: ContractService,
+  executions: DailyExecution[]
+) {
+  return (
+    getServicePlannedValue(service) -
+    getServiceRealizedValue(contractId, service, executions)
   )
 }
 
@@ -165,6 +192,12 @@ export function buildContractSummaries(
         totals.plannedQuantity > 0
           ? (totals.realizedQuantity / totals.plannedQuantity) * 100
           : 0,
+      percentFinancial:
+        totals.plannedValue > 0
+          ? (totals.realizedValue / totals.plannedValue) * 100
+          : 0,
+      physicalBalance: totals.plannedQuantity - totals.realizedQuantity,
+      financialBalance: totals.plannedValue - totals.realizedValue,
     }
   })
 }
@@ -208,6 +241,36 @@ export function buildReportRows(
       }
     })
   })
+}
+
+export function getFuelTotals(entries: FuelEntry[]) {
+  return entries.reduce(
+    (summary, entry) => {
+      const liters = Number(entry.liters) || 0
+      const value = getFuelEntryTotal(entry)
+
+      return {
+        liters: summary.liters + liters,
+        totalValue: summary.totalValue + value,
+        gasolineLiters:
+          summary.gasolineLiters + (entry.fuelType === "gasolina" ? liters : 0),
+        dieselLiters:
+          summary.dieselLiters + (entry.fuelType === "diesel" ? liters : 0),
+        gasolineValue:
+          summary.gasolineValue + (entry.fuelType === "gasolina" ? value : 0),
+        dieselValue:
+          summary.dieselValue + (entry.fuelType === "diesel" ? value : 0),
+      }
+    },
+    {
+      liters: 0,
+      totalValue: 0,
+      gasolineLiters: 0,
+      dieselLiters: 0,
+      gasolineValue: 0,
+      dieselValue: 0,
+    }
+  )
 }
 
 export function isWithinPeriod(date: string, startDate: string, endDate: string) {
