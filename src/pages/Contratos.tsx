@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react"
-import { Edit3, FileText, Plus, Save, Trash2, X } from "lucide-react"
+import { useEffect, useMemo, useState, type FormEvent } from "react"
+import { Edit3, FileText, Plus, Save, Trash2, Users, X } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -24,19 +24,27 @@ import {
 } from "@/components/ui/table"
 import {
   CONTRACTS_STORAGE_KEY,
+  contractDeadlineUnitOptions,
   contractStatusOptions,
   createEmptyContractForm,
+  createEmptyPlannedWorkforceRole,
   createEmptyService,
   createId,
+  getDeadlineUnitLabel,
+  getPlannedWorkforceTotal,
   getServiceUnitValue,
   loadContracts,
   saveContracts,
   serviceUnitOptions,
   type Contract,
+  type ContractDeadlineUnit,
   type ContractFormData,
   type ContractService,
   type ContractStatus,
+  type PlannedWorkforceRole,
 } from "@/lib/contracts"
+import { hasCapability } from "@/lib/permissions"
+import type { UserProfile } from "@/lib/profile"
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
   style: "currency",
@@ -47,7 +55,15 @@ const statusLabelByValue = Object.fromEntries(
   contractStatusOptions.map((option) => [option.value, option.label])
 ) as Record<ContractStatus, string>
 
-export function Contratos() {
+type ContratosProps = {
+  profile: UserProfile
+}
+
+function getNumberInputValue(value: number) {
+  return value === 0 ? "" : String(value)
+}
+
+export function Contratos({ profile }: ContratosProps) {
   const [contracts, setContracts] = useState<Contract[]>(() => loadContracts())
   const [formData, setFormData] = useState<ContractFormData>(() =>
     createEmptyContractForm()
@@ -55,11 +71,21 @@ export function Contratos() {
   const [editingContractId, setEditingContractId] = useState<string | null>(
     null
   )
+  const [feedback, setFeedback] = useState("")
 
+  const canManageContracts = hasCapability(profile, "contracts.manage")
   const isEditing = Boolean(editingContractId)
   const totalServices = useMemo(
     () =>
       contracts.reduce((total, contract) => total + contract.services.length, 0),
+    [contracts]
+  )
+  const totalPlannedWorkforce = useMemo(
+    () =>
+      contracts.reduce(
+        (total, contract) => total + getPlannedWorkforceTotal(contract.plannedWorkforce),
+        0
+      ),
     [contracts]
   )
 
@@ -90,6 +116,19 @@ export function Contratos() {
     }))
   }
 
+  function updateWorkforceField<K extends keyof PlannedWorkforceRole>(
+    workforceId: string,
+    field: K,
+    value: PlannedWorkforceRole[K]
+  ) {
+    setFormData((currentFormData) => ({
+      ...currentFormData,
+      plannedWorkforce: currentFormData.plannedWorkforce.map((role) =>
+        role.id === workforceId ? { ...role, [field]: value } : role
+      ),
+    }))
+  }
+
   function addService() {
     setFormData((currentFormData) => ({
       ...currentFormData,
@@ -107,6 +146,26 @@ export function Contratos() {
     }))
   }
 
+  function addWorkforceRole() {
+    setFormData((currentFormData) => ({
+      ...currentFormData,
+      plannedWorkforce: [
+        ...currentFormData.plannedWorkforce,
+        createEmptyPlannedWorkforceRole(),
+      ],
+    }))
+  }
+
+  function removeWorkforceRole(workforceId: string) {
+    setFormData((currentFormData) => ({
+      ...currentFormData,
+      plannedWorkforce:
+        currentFormData.plannedWorkforce.length === 1
+          ? currentFormData.plannedWorkforce
+          : currentFormData.plannedWorkforce.filter((role) => role.id !== workforceId),
+    }))
+  }
+
   function resetForm() {
     setEditingContractId(null)
     setFormData(createEmptyContractForm())
@@ -118,12 +177,15 @@ export function Contratos() {
       name: contract.name,
       client: contract.client,
       workingDaysDeadline: contract.workingDaysDeadline,
+      deadlineUnit: contract.deadlineUnit,
       startDate: contract.startDate,
       expectedEndDate: contract.expectedEndDate,
-      updatedReferenceDate: contract.updatedReferenceDate,
       status: contract.status,
       team: contract.team,
       employeeCount: contract.employeeCount,
+      plannedWorkforce: contract.plannedWorkforce.length
+        ? contract.plannedWorkforce
+        : [createEmptyPlannedWorkforceRole()],
       observations: contract.observations,
       services: contract.services.length
         ? contract.services
@@ -132,6 +194,10 @@ export function Contratos() {
   }
 
   function deleteContract(contractId: string) {
+    if (!canManageContracts) {
+      return
+    }
+
     const shouldDelete = window.confirm("Excluir este contrato?")
 
     if (!shouldDelete) {
@@ -141,14 +207,39 @@ export function Contratos() {
     setContracts((currentContracts) =>
       currentContracts.filter((contract) => contract.id !== contractId)
     )
+    setFeedback("Contrato removido.")
 
     if (editingContractId === contractId) {
       resetForm()
     }
   }
 
-  function submitContract(event: React.FormEvent<HTMLFormElement>) {
+  function submitContract(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+
+    if (!canManageContracts) {
+      return
+    }
+
+    const normalizedWorkforce = formData.plannedWorkforce
+      .map((role) => ({
+        ...role,
+        roleName: role.roleName.trim(),
+        plannedCount: Math.max(0, Number(role.plannedCount) || 0),
+      }))
+      .filter((role) => role.roleName.length > 0)
+
+    if (normalizedWorkforce.length === 0) {
+      window.alert("Informe ao menos uma função no efetivo planejado.")
+      return
+    }
+
+    const employeeCount = getPlannedWorkforceTotal(normalizedWorkforce)
+
+    if (employeeCount <= 0) {
+      window.alert("O efetivo planejado deve ter pelo menos uma pessoa.")
+      return
+    }
 
     const now = new Date().toISOString()
     const normalizedFormData: ContractFormData = {
@@ -156,9 +247,10 @@ export function Contratos() {
       name: formData.name.trim(),
       client: formData.client.trim(),
       workingDaysDeadline: Number(formData.workingDaysDeadline) || 0,
-      updatedReferenceDate: formData.updatedReferenceDate,
+      deadlineUnit: formData.deadlineUnit,
       team: formData.team.trim(),
-      employeeCount: Number(formData.employeeCount),
+      employeeCount,
+      plannedWorkforce: normalizedWorkforce,
       observations: formData.observations.trim(),
       services: formData.services.map((service) => ({
         ...service,
@@ -170,6 +262,7 @@ export function Contratos() {
         contractValue: Number(service.contractValue),
         monthlyGoal: Number(service.monthlyGoal),
         dailyGoal: Number(service.dailyGoal),
+        completedQuantity: Number(service.completedQuantity),
       })),
     }
 
@@ -185,6 +278,7 @@ export function Contratos() {
             : contract
         )
       )
+      setFeedback("Contrato atualizado com sucesso.")
     } else {
       const newContract: Contract = {
         id: createId(),
@@ -194,6 +288,7 @@ export function Contratos() {
       }
 
       setContracts((currentContracts) => [newContract, ...currentContracts])
+      setFeedback("Contrato criado com sucesso.")
     }
 
     resetForm()
@@ -208,12 +303,12 @@ export function Contratos() {
           </p>
           <h2 className="text-2xl font-semibold text-[#102f31]">Contratos</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Cadastre contratos e seus serviços previstos. Estes dados ficam
-            salvos no navegador via localStorage.
+            O Diretor define prazo, metas, equipe e efetivo planejado por função.
+            O Gestor acompanha a carteira em modo leitura.
           </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 sm:flex">
+        <div className="grid grid-cols-3 gap-3">
           <Card size="sm" className="rounded-lg">
             <CardContent className="px-4">
               <p className="text-xs text-muted-foreground">Contratos</p>
@@ -224,6 +319,12 @@ export function Contratos() {
             <CardContent className="px-4">
               <p className="text-xs text-muted-foreground">Serviços</p>
               <p className="text-xl font-semibold">{totalServices}</p>
+            </CardContent>
+          </Card>
+          <Card size="sm" className="rounded-lg">
+            <CardContent className="px-4">
+              <p className="text-xs text-muted-foreground">Efetivo</p>
+              <p className="text-xl font-semibold">{totalPlannedWorkforce}</p>
             </CardContent>
           </Card>
         </div>
@@ -255,13 +356,12 @@ export function Contratos() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Nome</TableHead>
-                    <TableHead>Cliente</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Prazo</TableHead>
                     <TableHead>Equipe</TableHead>
-                    <TableHead>Funcionários</TableHead>
+                    <TableHead>Efetivo</TableHead>
                     <TableHead>Serviços</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
+                    {canManageContracts && <TableHead className="text-right">Ações</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -271,45 +371,71 @@ export function Contratos() {
                         <div className="flex flex-col">
                           <span className="font-medium">{contract.name}</span>
                           <span className="text-xs text-muted-foreground">
-                            {contract.startDate || "Sem início"} até{" "}
-                            {contract.expectedEndDate || "sem previsão"}
+                            {contract.client}
                           </span>
                         </div>
                       </TableCell>
-                      <TableCell>{contract.client}</TableCell>
                       <TableCell>
                         <Badge variant="secondary">
                           {statusLabelByValue[contract.status]}
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {contract.workingDaysDeadline || "-"} dias úteis
-                      </TableCell>
-                      <TableCell>{contract.team}</TableCell>
-                      <TableCell>{contract.employeeCount}</TableCell>
-                      <TableCell>{contract.services.length}</TableCell>
-                      <TableCell>
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => editContract(contract)}
-                          >
-                            <Edit3 data-icon="inline-start" />
-                            Editar
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => deleteContract(contract.id)}
-                          >
-                            <Trash2 data-icon="inline-start" />
-                            Excluir
-                          </Button>
+                        <div className="flex flex-col">
+                          <span>
+                            {contract.workingDaysDeadline || "-"}{" "}
+                            {getDeadlineUnitLabel(
+                              contract.deadlineUnit,
+                              contract.workingDaysDeadline
+                            )}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {contract.startDate || "Sem início"} até{" "}
+                            {contract.expectedEndDate || "sem previsão"}
+                          </span>
                         </div>
                       </TableCell>
+                      <TableCell>{contract.team}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span className="font-medium">
+                            {getPlannedWorkforceTotal(contract.plannedWorkforce)} pessoas
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {contract.plannedWorkforce
+                              .map(
+                                (role) =>
+                                  `${role.plannedCount} ${role.roleName || "Função"}`
+                              )
+                              .join(" · ")}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell>{contract.services.length}</TableCell>
+                      {canManageContracts && (
+                        <TableCell>
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => editContract(contract)}
+                            >
+                              <Edit3 data-icon="inline-start" />
+                              Editar
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => deleteContract(contract.id)}
+                            >
+                              <Trash2 data-icon="inline-start" />
+                              Excluir
+                            </Button>
+                          </div>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -321,12 +447,18 @@ export function Contratos() {
         <Card className="rounded-lg border-[#d7e5e5] shadow-[0_12px_36px_rgba(12,55,56,0.06)] xl:sticky xl:top-24 xl:self-start">
           <CardHeader>
             <CardTitle>
-              {isEditing ? "Editar contrato" : "Novo contrato"}
+              {canManageContracts
+                ? isEditing
+                  ? "Editar contrato"
+                  : "Novo contrato"
+                : "Carteira em acompanhamento"}
             </CardTitle>
             <CardDescription>
-              Informe os dados principais e os serviços do contrato.
+              {canManageContracts
+                ? "Informe dados principais, efetivo planejado e serviços do contrato."
+                : "O perfil Gestor acompanha os contratos, mas não cria nem edita registros."}
             </CardDescription>
-            {isEditing && (
+            {canManageContracts && isEditing && (
               <CardAction>
                 <Button type="button" variant="ghost" size="sm" onClick={resetForm}>
                   <X data-icon="inline-start" />
@@ -336,445 +468,493 @@ export function Contratos() {
             )}
           </CardHeader>
 
-          <form onSubmit={submitContract}>
-            <CardContent className="flex flex-col gap-6">
-              <FieldGroup>
-                <Field>
-                  <FieldLabel htmlFor="contract-name">Nome</FieldLabel>
-                  <Input
-                    id="contract-name"
-                    value={formData.name}
-                    onChange={(event) => updateField("name", event.target.value)}
-                    required
-                  />
-                </Field>
-
-                <Field>
-                  <FieldLabel htmlFor="contract-client">Cliente</FieldLabel>
-                  <Input
-                    id="contract-client"
-                    value={formData.client}
-                    onChange={(event) =>
-                      updateField("client", event.target.value)
-                    }
-                    required
-                  />
-                </Field>
-
-                <div className="grid gap-4 sm:grid-cols-2">
+          {canManageContracts ? (
+            <form onSubmit={submitContract}>
+              <CardContent className="flex flex-col gap-6">
+                <FieldGroup>
                   <Field>
-                    <FieldLabel htmlFor="contract-start-date">
-                      Data início
-                    </FieldLabel>
+                    <FieldLabel htmlFor="contract-name">Nome</FieldLabel>
                     <Input
-                      id="contract-start-date"
-                      type="date"
-                      value={formData.startDate}
-                      onChange={(event) =>
-                        updateField("startDate", event.target.value)
-                      }
+                      id="contract-name"
+                      value={formData.name}
+                      onChange={(event) => updateField("name", event.target.value)}
                       required
                     />
                   </Field>
+
                   <Field>
-                    <FieldLabel htmlFor="contract-end-date">
-                      Data fim prevista
-                    </FieldLabel>
+                    <FieldLabel htmlFor="contract-client">Cliente</FieldLabel>
                     <Input
-                      id="contract-end-date"
-                      type="date"
-                      value={formData.expectedEndDate}
-                      onChange={(event) =>
-                        updateField("expectedEndDate", event.target.value)
-                      }
+                      id="contract-client"
+                      value={formData.client}
+                      onChange={(event) => updateField("client", event.target.value)}
                       required
                     />
                   </Field>
-                </div>
 
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <Field>
-                    <FieldLabel htmlFor="contract-status">Status</FieldLabel>
-                    <select
-                      id="contract-status"
-                      className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                      value={formData.status}
-                      onChange={(event) =>
-                        updateField(
-                          "status",
-                          event.target.value as ContractStatus
-                        )
-                      }
-                    >
-                      {contractStatusOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="contract-working-days">
-                      Prazo útil
-                    </FieldLabel>
-                    <Input
-                      id="contract-working-days"
-                      type="number"
-                      min="0"
-                      value={formData.workingDaysDeadline}
-                      onChange={(event) =>
-                        updateField(
-                          "workingDaysDeadline",
-                          Number(event.target.value)
-                        )
-                      }
-                    />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="contract-employee-count">
-                      Funcionários
-                    </FieldLabel>
-                    <Input
-                      id="contract-employee-count"
-                      type="number"
-                      min="1"
-                      value={formData.employeeCount}
-                      onChange={(event) =>
-                        updateField("employeeCount", Number(event.target.value))
-                      }
-                      required
-                    />
-                  </Field>
-                </div>
-
-                <Field>
-                  <FieldLabel htmlFor="contract-team">Equipe</FieldLabel>
-                  <Input
-                    id="contract-team"
-                    value={formData.team}
-                    onChange={(event) => updateField("team", event.target.value)}
-                    required
-                  />
-                </Field>
-
-                <Field>
-                  <FieldLabel htmlFor="contract-updated-reference">
-                    Data de atualização
-                  </FieldLabel>
-                  <Input
-                    id="contract-updated-reference"
-                    type="date"
-                    value={formData.updatedReferenceDate}
-                    onChange={(event) =>
-                      updateField("updatedReferenceDate", event.target.value)
-                    }
-                  />
-                </Field>
-
-                <Field>
-                  <FieldLabel htmlFor="contract-observations">
-                    Observações
-                  </FieldLabel>
-                  <textarea
-                    id="contract-observations"
-                    className="min-h-20 w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                    value={formData.observations}
-                    onChange={(event) =>
-                      updateField("observations", event.target.value)
-                    }
-                    placeholder="Observações operacionais do contrato"
-                  />
-                </Field>
-              </FieldGroup>
-
-              <FieldSet className="gap-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <h3 className="text-sm font-semibold">Serviços</h3>
-                    <p className="text-xs text-muted-foreground">
-                      Adicione os serviços previstos dentro do contrato.
-                    </p>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Field>
+                      <FieldLabel htmlFor="contract-start-date">Data início</FieldLabel>
+                      <Input
+                        id="contract-start-date"
+                        type="date"
+                        value={formData.startDate}
+                        onChange={(event) =>
+                          updateField("startDate", event.target.value)
+                        }
+                        required
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="contract-end-date">
+                        Data fim prevista
+                      </FieldLabel>
+                      <Input
+                        id="contract-end-date"
+                        type="date"
+                        value={formData.expectedEndDate}
+                        onChange={(event) =>
+                          updateField("expectedEndDate", event.target.value)
+                        }
+                        required
+                      />
+                    </Field>
                   </div>
-                  <Button type="button" variant="outline" size="sm" onClick={addService}>
-                    <Plus data-icon="inline-start" />
-                    Serviço
-                  </Button>
-                </div>
 
-                <div className="flex flex-col gap-4">
-                  {formData.services.map((service, index) => (
-                    <div
-                      key={service.id}
-                      className="flex flex-col gap-4 rounded-lg border bg-muted/20 p-3"
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <Field>
+                      <FieldLabel htmlFor="contract-status">Status</FieldLabel>
+                      <select
+                        id="contract-status"
+                        className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                        value={formData.status}
+                        onChange={(event) =>
+                          updateField("status", event.target.value as ContractStatus)
+                        }
+                      >
+                        {contractStatusOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="contract-working-days">Prazo útil</FieldLabel>
+                      <Input
+                        id="contract-working-days"
+                        type="number"
+                        min="0"
+                        value={getNumberInputValue(formData.workingDaysDeadline)}
+                        onChange={(event) =>
+                          updateField(
+                            "workingDaysDeadline",
+                            event.target.value === ""
+                              ? 0
+                              : Number(event.target.value)
+                          )
+                        }
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="contract-deadline-unit">
+                        Medida do prazo
+                      </FieldLabel>
+                      <select
+                        id="contract-deadline-unit"
+                        className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                        value={formData.deadlineUnit}
+                        onChange={(event) =>
+                          updateField(
+                            "deadlineUnit",
+                            event.target.value as ContractDeadlineUnit
+                          )
+                        }
+                      >
+                        {contractDeadlineUnitOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  </div>
+
+                  <Field>
+                    <FieldLabel htmlFor="contract-team">Equipe</FieldLabel>
+                    <Input
+                      id="contract-team"
+                      value={formData.team}
+                      onChange={(event) => updateField("team", event.target.value)}
+                      required
+                    />
+                  </Field>
+
+                  <Field>
+                    <FieldLabel htmlFor="contract-observations">Observações</FieldLabel>
+                    <textarea
+                      id="contract-observations"
+                      className="min-h-20 w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                      value={formData.observations}
+                      onChange={(event) =>
+                        updateField("observations", event.target.value)
+                      }
+                      placeholder="Observações operacionais do contrato"
+                    />
+                  </Field>
+                </FieldGroup>
+
+                <FieldSet className="gap-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold">Efetivo planejado</h3>
+                      <p className="text-xs text-muted-foreground">
+                        Defina o quadro previsto por função para comparação diária.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={addWorkforceRole}
                     >
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-medium">
-                          Serviço {index + 1}
-                        </p>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          onClick={() => removeService(service.id)}
-                          disabled={formData.services.length === 1}
-                          aria-label="Remover serviço"
-                        >
-                          <Trash2 />
-                        </Button>
-                      </div>
+                      <Plus data-icon="inline-start" />
+                      Função
+                    </Button>
+                  </div>
 
-                      <div className="grid gap-4 sm:grid-cols-[120px_1fr]">
+                  <div className="flex flex-col gap-3">
+                    {formData.plannedWorkforce.map((role, index) => (
+                      <div
+                        key={role.id}
+                        className="grid gap-3 rounded-lg border bg-muted/20 p-3 sm:grid-cols-[1fr_120px_auto]"
+                      >
                         <Field>
-                          <FieldLabel htmlFor={`service-${service.id}-code`}>
-                            Item
+                          <FieldLabel htmlFor={`workforce-role-${role.id}`}>
+                            Função {index + 1}
                           </FieldLabel>
                           <Input
-                            id={`service-${service.id}-code`}
-                            value={service.code}
+                            id={`workforce-role-${role.id}`}
+                            value={role.roleName}
                             onChange={(event) =>
-                              updateServiceField(
-                                service.id,
-                                "code",
+                              updateWorkforceField(
+                                role.id,
+                                "roleName",
                                 event.target.value
                               )
                             }
-                            placeholder="Item 1"
+                            placeholder="Líder, Operador, Servente"
+                            required
                           />
                         </Field>
+
                         <Field>
-                          <FieldLabel htmlFor={`service-${service.id}-name`}>
-                            Nome
+                          <FieldLabel htmlFor={`workforce-count-${role.id}`}>
+                            Quantidade
                           </FieldLabel>
                           <Input
-                            id={`service-${service.id}-name`}
-                            value={service.name}
+                            id={`workforce-count-${role.id}`}
+                            type="number"
+                            min="0"
+                            value={getNumberInputValue(role.plannedCount)}
                             onChange={(event) =>
-                              updateServiceField(
-                                service.id,
-                                "name",
-                                event.target.value
+                              updateWorkforceField(
+                                role.id,
+                                "plannedCount",
+                                event.target.value === ""
+                                  ? 0
+                                  : Number(event.target.value)
                               )
                             }
                             required
                           />
                         </Field>
-                      </div>
 
-                      <Field>
-                        <FieldLabel
-                          htmlFor={`service-${service.id}-description`}
-                        >
-                          Descrição
-                        </FieldLabel>
-                        <textarea
-                          id={`service-${service.id}-description`}
-                          className="min-h-16 w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                          value={service.description}
-                          onChange={(event) =>
-                            updateServiceField(
-                              service.id,
-                              "description",
-                              event.target.value
-                            )
-                          }
-                          placeholder="Detalhe contratual ou observação do item"
-                        />
-                      </Field>
-
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <Field>
-                          <FieldLabel htmlFor={`service-${service.id}-unit`}>
-                            Unidade
-                          </FieldLabel>
-                          <select
-                            id={`service-${service.id}-unit`}
-                            className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                            value={service.unit}
-                            onChange={(event) =>
-                              updateServiceField(
-                                service.id,
-                                "unit",
-                                event.target.value
-                              )
-                            }
+                        <div className="flex items-end">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => removeWorkforceRole(role.id)}
+                            disabled={formData.plannedWorkforce.length === 1}
+                            aria-label="Remover função"
                           >
-                            {serviceUnitOptions.map((unit) => (
-                              <option key={unit} value={unit}>
-                                {unit}
-                              </option>
-                            ))}
-                          </select>
-                        </Field>
-                        <Field>
-                          <FieldLabel
-                            htmlFor={`service-${service.id}-quantity`}
-                          >
-                            Quantidade total
-                          </FieldLabel>
-                          <Input
-                            id={`service-${service.id}-quantity`}
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={service.totalQuantity}
-                            onChange={(event) =>
-                              updateServiceField(
-                                service.id,
-                                "totalQuantity",
-                                Number(event.target.value)
-                              )
-                            }
-                            required
-                          />
-                        </Field>
-                      </div>
-
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <Field>
-                          <FieldLabel htmlFor={`service-${service.id}-value`}>
-                            Valor contratado
-                          </FieldLabel>
-                          <Input
-                            id={`service-${service.id}-value`}
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={service.contractValue}
-                            onChange={(event) =>
-                              updateServiceField(
-                                service.id,
-                                "contractValue",
-                                Number(event.target.value)
-                              )
-                            }
-                            required
-                          />
-                        </Field>
-                        <Field>
-                          <FieldLabel
-                            htmlFor={`service-${service.id}-monthly-goal`}
-                          >
-                            Meta mensal
-                          </FieldLabel>
-                          <Input
-                            id={`service-${service.id}-monthly-goal`}
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={service.monthlyGoal}
-                            onChange={(event) =>
-                              updateServiceField(
-                                service.id,
-                                "monthlyGoal",
-                                Number(event.target.value)
-                              )
-                            }
-                          />
-                        </Field>
-                      </div>
-
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <Field>
-                          <FieldLabel htmlFor={`service-${service.id}-goal`}>
-                            Meta diária
-                          </FieldLabel>
-                          <Input
-                            id={`service-${service.id}-goal`}
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={service.dailyGoal}
-                            onChange={(event) =>
-                              updateServiceField(
-                                service.id,
-                                "dailyGoal",
-                                Number(event.target.value)
-                              )
-                            }
-                            required
-                          />
-                        </Field>
-                        <div className="rounded-lg border bg-background p-3 text-sm">
-                          <p className="text-xs text-muted-foreground">
-                            Valor unitário calculado
-                          </p>
-                          <p className="mt-1 font-semibold">
-                            {currencyFormatter.format(getServiceUnitValue(service))}
-                          </p>
+                            <Trash2 />
+                          </Button>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              </FieldSet>
-            </CardContent>
+                    ))}
+                  </div>
 
-            <CardFooter className="justify-end gap-2">
-              <Button type="button" variant="outline" onClick={resetForm}>
-                Limpar
-              </Button>
-              <Button type="submit">
-                <Save data-icon="inline-start" />
-                {isEditing ? "Salvar alterações" : "Criar contrato"}
-              </Button>
-            </CardFooter>
-          </form>
-        </Card>
-      </div>
-
-      {contracts.length > 0 && (
-        <Card className="rounded-lg">
-          <CardHeader>
-            <CardTitle>Serviços por contrato</CardTitle>
-            <CardDescription>
-              Visualização simples dos serviços cadastrados em cada contrato.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {contracts.map((contract) => (
-              <div key={contract.id} className="rounded-lg border p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-medium">{contract.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {contract.client}
+                  <div className="rounded-lg border bg-muted/20 p-3 text-sm">
+                    <p className="text-xs text-muted-foreground">Total planejado</p>
+                    <p className="mt-1 flex items-center gap-2 text-lg font-semibold">
+                      <Users className="size-4" />
+                      {getPlannedWorkforceTotal(formData.plannedWorkforce)} pessoas
                     </p>
                   </div>
-                  <Badge variant="outline">
-                    {statusLabelByValue[contract.status]}
-                  </Badge>
-                </div>
-                <div className="mt-4 flex flex-col gap-3">
-                  {contract.services.map((service) => (
-                    <div
-                      key={service.id}
-                      className="rounded-lg bg-muted/40 p-3 text-sm"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="font-medium">{service.name}</p>
-                        <span className="text-xs text-muted-foreground">
-                          {service.unit}
-                        </span>
-                      </div>
-                      <div className="mt-2 grid grid-cols-3 gap-2 text-xs text-muted-foreground">
-                        <span>Total: {service.totalQuantity}</span>
-                        <span>{currencyFormatter.format(service.contractValue)}</span>
-                        <span>Meta: {service.dailyGoal}</span>
-                      </div>
-                      <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                        <span>Mensal: {service.monthlyGoal}</span>
-                        <span>
-                          Unit.: {currencyFormatter.format(getServiceUnitValue(service))}
-                        </span>
-                      </div>
+                </FieldSet>
+
+                <FieldSet className="gap-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold">Serviços</h3>
+                      <p className="text-xs text-muted-foreground">
+                        Adicione os serviços previstos dentro do contrato.
+                      </p>
                     </div>
-                  ))}
-                </div>
+                    <Button type="button" variant="outline" size="sm" onClick={addService}>
+                      <Plus data-icon="inline-start" />
+                      Serviço
+                    </Button>
+                  </div>
+
+                  <div className="flex flex-col gap-4">
+                    {formData.services.map((service, index) => (
+                      <div
+                        key={service.id}
+                        className="flex flex-col gap-4 rounded-lg border bg-muted/20 p-3"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-sm font-medium">Serviço {index + 1}</p>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => removeService(service.id)}
+                            disabled={formData.services.length === 1}
+                            aria-label="Remover serviço"
+                          >
+                            <Trash2 />
+                          </Button>
+                        </div>
+
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <Field>
+                            <FieldLabel htmlFor={`service-code-${service.id}`}>
+                              Código
+                            </FieldLabel>
+                            <Input
+                              id={`service-code-${service.id}`}
+                              value={service.code}
+                              onChange={(event) =>
+                                updateServiceField(service.id, "code", event.target.value)
+                              }
+                            />
+                          </Field>
+                          <Field>
+                            <FieldLabel htmlFor={`service-name-${service.id}`}>
+                              Nome
+                            </FieldLabel>
+                            <Input
+                              id={`service-name-${service.id}`}
+                              value={service.name}
+                              onChange={(event) =>
+                                updateServiceField(service.id, "name", event.target.value)
+                              }
+                              required
+                            />
+                          </Field>
+                        </div>
+
+                        <Field>
+                          <FieldLabel htmlFor={`service-description-${service.id}`}>
+                            Descrição
+                          </FieldLabel>
+                          <textarea
+                            id={`service-description-${service.id}`}
+                            className="min-h-20 w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                            value={service.description}
+                            onChange={(event) =>
+                              updateServiceField(
+                                service.id,
+                                "description",
+                                event.target.value
+                              )
+                            }
+                          />
+                        </Field>
+
+                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                          <Field>
+                            <FieldLabel htmlFor={`service-unit-${service.id}`}>
+                              Unidade
+                            </FieldLabel>
+                            <select
+                              id={`service-unit-${service.id}`}
+                              className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                              value={service.unit}
+                              onChange={(event) =>
+                                updateServiceField(service.id, "unit", event.target.value)
+                              }
+                            >
+                              {serviceUnitOptions.map((unit) => (
+                                <option key={unit} value={unit}>
+                                  {unit}
+                                </option>
+                              ))}
+                            </select>
+                          </Field>
+                          <Field>
+                            <FieldLabel htmlFor={`service-total-${service.id}`}>
+                              Quantidade total
+                            </FieldLabel>
+                            <Input
+                              id={`service-total-${service.id}`}
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={getNumberInputValue(service.totalQuantity)}
+                              onChange={(event) =>
+                                updateServiceField(
+                                  service.id,
+                                  "totalQuantity",
+                                  event.target.value === ""
+                                    ? 0
+                                    : Number(event.target.value)
+                                )
+                              }
+                              required
+                            />
+                          </Field>
+                          <Field>
+                            <FieldLabel htmlFor={`service-value-${service.id}`}>
+                              Valor contratado
+                            </FieldLabel>
+                            <Input
+                              id={`service-value-${service.id}`}
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={getNumberInputValue(service.contractValue)}
+                              onChange={(event) =>
+                                updateServiceField(
+                                  service.id,
+                                  "contractValue",
+                                  event.target.value === ""
+                                    ? 0
+                                    : Number(event.target.value)
+                                )
+                              }
+                            />
+                          </Field>
+                          <Field>
+                            <FieldLabel htmlFor={`service-unit-value-${service.id}`}>
+                              Valor unitário
+                            </FieldLabel>
+                            <Input
+                              id={`service-unit-value-${service.id}`}
+                              value={currencyFormatter.format(
+                                getServiceUnitValue(service)
+                              )}
+                              readOnly
+                            />
+                          </Field>
+                        </div>
+
+                        <div className="grid gap-4 sm:grid-cols-3">
+                          <Field>
+                            <FieldLabel htmlFor={`service-monthly-goal-${service.id}`}>
+                              Meta mensal
+                            </FieldLabel>
+                            <Input
+                              id={`service-monthly-goal-${service.id}`}
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={getNumberInputValue(service.monthlyGoal)}
+                              onChange={(event) =>
+                                updateServiceField(
+                                  service.id,
+                                  "monthlyGoal",
+                                  event.target.value === ""
+                                    ? 0
+                                    : Number(event.target.value)
+                                )
+                              }
+                            />
+                          </Field>
+                          <Field>
+                            <FieldLabel htmlFor={`service-daily-goal-${service.id}`}>
+                              Meta diária
+                            </FieldLabel>
+                            <Input
+                              id={`service-daily-goal-${service.id}`}
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={getNumberInputValue(service.dailyGoal)}
+                              onChange={(event) =>
+                                updateServiceField(
+                                  service.id,
+                                  "dailyGoal",
+                                  event.target.value === ""
+                                    ? 0
+                                    : Number(event.target.value)
+                                )
+                              }
+                            />
+                          </Field>
+                          <Field>
+                            <FieldLabel htmlFor={`service-completed-${service.id}`}>
+                              Realizado acumulado
+                            </FieldLabel>
+                            <Input
+                              id={`service-completed-${service.id}`}
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={getNumberInputValue(
+                                service.completedQuantity
+                              )}
+                              onChange={(event) =>
+                                updateServiceField(
+                                  service.id,
+                                  "completedQuantity",
+                                  event.target.value === ""
+                                    ? 0
+                                    : Number(event.target.value)
+                                )
+                              }
+                            />
+                          </Field>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </FieldSet>
+
+                {feedback && (
+                  <div className="rounded-lg border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                    {feedback}
+                  </div>
+                )}
+              </CardContent>
+
+              <CardFooter className="justify-end gap-2">
+                <Button type="submit">
+                  <Save data-icon="inline-start" />
+                  {isEditing ? "Salvar alterações" : "Criar contrato"}
+                </Button>
+              </CardFooter>
+            </form>
+          ) : (
+            <CardContent className="flex flex-col gap-4">
+              <div className="rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
+                Apenas o perfil Diretor pode criar, editar e excluir contratos. O
+                Gestor usa esta tela para acompanhar serviços, prazo e efetivo
+                planejado.
               </div>
-            ))}
-          </CardContent>
+
+              {feedback && (
+                <div className="rounded-lg border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                  {feedback}
+                </div>
+              )}
+            </CardContent>
+          )}
         </Card>
-      )}
+      </div>
     </div>
   )
 }

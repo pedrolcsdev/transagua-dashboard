@@ -1,4 +1,11 @@
 export type ContractStatus = "ativo" | "pausado" | "encerrado"
+export type ContractDeadlineUnit = "dia" | "semana" | "mes"
+
+export type PlannedWorkforceRole = {
+  id: string
+  roleName: string
+  plannedCount: number
+}
 
 export type ContractService = {
   id: string
@@ -18,12 +25,13 @@ export type Contract = {
   name: string
   client: string
   workingDaysDeadline: number
+  deadlineUnit: ContractDeadlineUnit
   startDate: string
   expectedEndDate: string
-  updatedReferenceDate: string
   status: ContractStatus
   team: string
   employeeCount: number
+  plannedWorkforce: PlannedWorkforceRole[]
   observations: string
   services: ContractService[]
   createdAt: string
@@ -41,6 +49,15 @@ export const contractStatusOptions: Array<{
   { value: "ativo", label: "Ativo" },
   { value: "pausado", label: "Pausado" },
   { value: "encerrado", label: "Encerrado" },
+]
+
+export const contractDeadlineUnitOptions: Array<{
+  value: ContractDeadlineUnit
+  label: string
+}> = [
+  { value: "dia", label: "Dia" },
+  { value: "semana", label: "Semana" },
+  { value: "mes", label: "Mês" },
 ]
 
 export const serviceUnitOptions = ["m", "m²", "m³", "km", "un", "und", "VB", "h"]
@@ -64,17 +81,64 @@ export function createEmptyService(): ContractService {
   }
 }
 
+export function createEmptyPlannedWorkforceRole(): PlannedWorkforceRole {
+  return {
+    id: createId(),
+    roleName: "",
+    plannedCount: 0,
+  }
+}
+
+export function getPlannedWorkforceTotal(workforce: PlannedWorkforceRole[]) {
+  return workforce.reduce(
+    (total, role) => total + (Number(role.plannedCount) || 0),
+    0
+  )
+}
+
+function createLegacyPlannedWorkforce(employeeCount: number) {
+  return [
+    {
+      id: createId(),
+      roleName: "Equipe geral",
+      plannedCount: Math.max(1, Number(employeeCount) || 1),
+    },
+  ]
+}
+
+export function normalizePlannedWorkforce(
+  workforce: unknown,
+  fallbackEmployeeCount = 1
+) {
+  if (!Array.isArray(workforce) || workforce.length === 0) {
+    return createLegacyPlannedWorkforce(fallbackEmployeeCount)
+  }
+
+  const normalizedWorkforce = workforce.map((role) => ({
+    id:
+      typeof role?.id === "string" && role.id.length > 0 ? role.id : createId(),
+    roleName:
+      typeof role?.roleName === "string" ? role.roleName.trim() : "",
+    plannedCount: Math.max(0, Number(role?.plannedCount) || 0),
+  }))
+
+  return normalizedWorkforce.length > 0
+    ? normalizedWorkforce
+    : createLegacyPlannedWorkforce(fallbackEmployeeCount)
+}
+
 export function createEmptyContractForm(): ContractFormData {
   return {
     name: "",
     client: "",
     workingDaysDeadline: 0,
+    deadlineUnit: "dia",
     startDate: "",
     expectedEndDate: "",
-    updatedReferenceDate: "",
     status: "ativo",
     team: "",
     employeeCount: 1,
+    plannedWorkforce: [createEmptyPlannedWorkforceRole()],
     observations: "",
     services: [createEmptyService()],
   }
@@ -101,37 +165,54 @@ export function loadContracts(): Contract[] {
       return []
     }
 
-    return parsedContracts.map((contract) => ({
-      id: contract.id ?? createId(),
-      name: contract.name ?? "",
-      client: contract.client ?? "",
-      workingDaysDeadline: Number(contract.workingDaysDeadline) || 0,
-      startDate: contract.startDate ?? "",
-      expectedEndDate: contract.expectedEndDate ?? "",
-      updatedReferenceDate: contract.updatedReferenceDate ?? "",
-      status: contract.status ?? "ativo",
-      team: contract.team ?? "",
-      employeeCount: Number(contract.employeeCount) || 1,
-      observations: contract.observations ?? "",
-      services: Array.isArray(contract.services)
-        ? contract.services.map((service: Partial<ContractService> & { unitValue?: number }) => ({
-            id: service.id ?? createId(),
-            code: service.code ?? "",
-            name: service.name ?? "",
-            description: service.description ?? "",
-            unit: service.unit ?? "m",
-            totalQuantity: Number(service.totalQuantity) || 0,
-            contractValue:
-              Number(service.contractValue) ||
-              (Number(service.totalQuantity) || 0) * (Number(service.unitValue) || 0),
-            monthlyGoal: Number(service.monthlyGoal) || 0,
-            dailyGoal: Number(service.dailyGoal) || 0,
-            completedQuantity: Number(service.completedQuantity) || 0,
-          }))
-        : [],
-      createdAt: contract.createdAt ?? new Date().toISOString(),
-      updatedAt: contract.updatedAt ?? new Date().toISOString(),
-    }))
+    return parsedContracts.map((contract) => {
+      const plannedWorkforce = normalizePlannedWorkforce(
+        contract.plannedWorkforce,
+        Number(contract.employeeCount) || 1
+      )
+
+      return {
+        id: contract.id ?? createId(),
+        name: contract.name ?? "",
+        client: contract.client ?? "",
+        workingDaysDeadline: Number(contract.workingDaysDeadline) || 0,
+        deadlineUnit:
+          contract.deadlineUnit === "semana" || contract.deadlineUnit === "mes"
+            ? contract.deadlineUnit
+            : "dia",
+        startDate: contract.startDate ?? "",
+        expectedEndDate: contract.expectedEndDate ?? "",
+        status: contract.status ?? "ativo",
+        team: contract.team ?? "",
+        employeeCount:
+          Number(contract.employeeCount) ||
+          getPlannedWorkforceTotal(plannedWorkforce) ||
+          1,
+        plannedWorkforce,
+        observations: contract.observations ?? "",
+        services: Array.isArray(contract.services)
+          ? contract.services.map(
+              (service: Partial<ContractService> & { unitValue?: number }) => ({
+                id: service.id ?? createId(),
+                code: service.code ?? "",
+                name: service.name ?? "",
+                description: service.description ?? "",
+                unit: service.unit ?? "m",
+                totalQuantity: Number(service.totalQuantity) || 0,
+                contractValue:
+                  Number(service.contractValue) ||
+                  (Number(service.totalQuantity) || 0) *
+                    (Number(service.unitValue) || 0),
+                monthlyGoal: Number(service.monthlyGoal) || 0,
+                dailyGoal: Number(service.dailyGoal) || 0,
+                completedQuantity: Number(service.completedQuantity) || 0,
+              })
+            )
+          : [],
+        createdAt: contract.createdAt ?? new Date().toISOString(),
+        updatedAt: contract.updatedAt ?? new Date().toISOString(),
+      }
+    })
   } catch {
     return []
   }
@@ -139,4 +220,19 @@ export function loadContracts(): Contract[] {
 
 export function saveContracts(contracts: Contract[]) {
   localStorage.setItem(CONTRACTS_STORAGE_KEY, JSON.stringify(contracts))
+}
+
+export function getDeadlineUnitLabel(
+  unit: ContractDeadlineUnit,
+  quantity: number
+) {
+  if (unit === "semana") {
+    return quantity === 1 ? "semana" : "semanas"
+  }
+
+  if (unit === "mes") {
+    return quantity === 1 ? "mês" : "meses"
+  }
+
+  return quantity === 1 ? "dia" : "dias"
 }

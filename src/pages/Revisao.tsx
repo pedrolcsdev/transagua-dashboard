@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { CheckCircle2, ClipboardCheck, Save } from "lucide-react"
+import { CheckCircle2, ClipboardCheck, History, Save } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -12,7 +12,12 @@ import {
 } from "@/components/ui/card"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { loadContracts, saveContracts, type Contract } from "@/lib/contracts"
+import {
+  createId,
+  loadContracts,
+  saveContracts,
+  type Contract,
+} from "@/lib/contracts"
 import {
   loadDailyExecutions,
   saveDailyExecutions,
@@ -20,6 +25,8 @@ import {
   type DailyExecution,
   type DailyExecutionItem,
 } from "@/lib/daily-executions"
+import { hasCapability } from "@/lib/permissions"
+import type { UserProfile } from "@/lib/profile"
 import { cn } from "@/lib/utils"
 
 type ReviewRow = {
@@ -67,13 +74,30 @@ function getPerformanceStatus(realized: number, goal: number) {
   }
 }
 
-export function Revisao() {
+type RevisaoProps = {
+  profile: UserProfile
+}
+
+function getNumberInputValue(value: number) {
+  return value === 0 ? "" : String(value)
+}
+
+export function Revisao({ profile }: RevisaoProps) {
   const [contracts, setContracts] = useState<Contract[]>(() => loadContracts())
   const [executions, setExecutions] = useState<DailyExecution[]>(() =>
     loadDailyExecutions()
   )
+  const [realizedDrafts, setRealizedDrafts] = useState<Record<string, string>>({})
+  const [reviewObservationDrafts, setReviewObservationDrafts] = useState<
+    Record<string, string>
+  >({})
+  const [reviewReasonDrafts, setReviewReasonDrafts] = useState<Record<string, string>>(
+    {}
+  )
+  const [rowErrors, setRowErrors] = useState<Record<string, string>>({})
   const [feedback, setFeedback] = useState("")
 
+  const canManageReview = hasCapability(profile, "review.manage")
   const reviewRows = useMemo<ReviewRow[]>(
     () =>
       executions.flatMap((execution) => {
@@ -104,10 +128,15 @@ export function Revisao() {
     saveContracts(contracts)
   }, [contracts])
 
+  function getRowKey(executionId: string, serviceId: string) {
+    return `${executionId}-${serviceId}`
+  }
+
   function updateExecutionItem(
     executionId: string,
     serviceId: string,
-    updater: (item: DailyExecutionItem) => DailyExecutionItem
+    updater: (item: DailyExecutionItem) => DailyExecutionItem,
+    successMessage: string
   ) {
     const now = new Date().toISOString()
     const nextExecutions = executions.map((execution) =>
@@ -129,39 +158,134 @@ export function Revisao() {
 
     setExecutions(nextExecutions)
     setContracts(syncedContracts)
-    setFeedback("Revisão salva e dados do contrato atualizados.")
+    setFeedback(successMessage)
   }
 
-  function updateRealized(
-    executionId: string,
-    serviceId: string,
-    realizedDaily: number
-  ) {
-    updateExecutionItem(executionId, serviceId, (item) => ({
-      ...item,
-      realizedDaily,
-    }))
-  }
+  function saveReviewRow(executionId: string, serviceId: string) {
+    const row = reviewRows.find(
+      (entry) =>
+        entry.execution.id === executionId && entry.item.serviceId === serviceId
+    )
 
-  function updateReviewObservation(
-    executionId: string,
-    serviceId: string,
-    reviewObservation: string
-  ) {
-    updateExecutionItem(executionId, serviceId, (item) => ({
-      ...item,
-      reviewObservation,
+    if (!row || !canManageReview) {
+      return false
+    }
+
+    const rowKey = getRowKey(executionId, serviceId)
+    const nextRealized = Number(realizedDrafts[rowKey] ?? row.item.realizedDaily) || 0
+    const reviewObservation =
+      reviewObservationDrafts[rowKey] ?? row.item.reviewObservation ?? ""
+    const reviewReason = reviewReasonDrafts[rowKey] ?? ""
+    const currentRealized = Number(row.item.realizedDaily) || 0
+    const hasRealizedChange = nextRealized !== currentRealized
+
+    if (hasRealizedChange && reviewReason.trim().length === 0) {
+      setRowErrors((current) => ({
+        ...current,
+        [rowKey]: "Informe o motivo da correção antes de salvar.",
+      }))
+      return false
+    }
+
+    setRowErrors((current) => {
+      const nextErrors = { ...current }
+      delete nextErrors[rowKey]
+      return nextErrors
+    })
+
+    updateExecutionItem(
+      executionId,
+      serviceId,
+      (item) => ({
+        ...item,
+        realizedDaily: nextRealized,
+        reviewObservation: reviewObservation.trim(),
+        reviewHistory: hasRealizedChange
+          ? [
+              ...(item.reviewHistory ?? []),
+              {
+                id: createId(),
+                previousValue: currentRealized,
+                newValue: nextRealized,
+                reason: reviewReason.trim(),
+                changedAt: new Date().toISOString(),
+                changedByProfile: profile,
+              },
+            ]
+          : item.reviewHistory ?? [],
+      }),
+      hasRealizedChange
+        ? "Correção gerencial salva com histórico."
+        : "Observação de revisão atualizada."
+    )
+
+    setRealizedDrafts((current) => ({
+      ...current,
+      [rowKey]: String(nextRealized),
     }))
+    setReviewObservationDrafts((current) => ({
+      ...current,
+      [rowKey]: reviewObservation,
+    }))
+    setReviewReasonDrafts((current) => ({
+      ...current,
+      [rowKey]: "",
+    }))
+
+    return true
   }
 
   function completeReview(executionId: string, serviceId: string) {
+    const rowKey = getRowKey(executionId, serviceId)
+    const row = reviewRows.find(
+      (entry) =>
+        entry.execution.id === executionId && entry.item.serviceId === serviceId
+    )
+
+    if (!row || !canManageReview) {
+      return
+    }
+
+    const hasPendingRealizedChange =
+      realizedDrafts[rowKey] !== undefined &&
+      Number(realizedDrafts[rowKey]) !== (Number(row.item.realizedDaily) || 0)
+    const hasPendingObservationChange =
+      reviewObservationDrafts[rowKey] !== undefined &&
+      reviewObservationDrafts[rowKey] !== (row.item.reviewObservation ?? "")
+
+    if (hasPendingRealizedChange || hasPendingObservationChange) {
+      const didSave = saveReviewRow(executionId, serviceId)
+
+      if (!didSave) {
+        return
+      }
+    }
+
     const now = new Date().toISOString()
 
-    updateExecutionItem(executionId, serviceId, (item) => ({
-      ...item,
-      reviewCompleted: true,
-      reviewedAt: now,
-    }))
+    updateExecutionItem(
+      executionId,
+      serviceId,
+      (item) => ({
+        ...item,
+        reviewCompleted: true,
+        reviewedAt: now,
+      }),
+      "Revisão concluída."
+    )
+  }
+
+  if (!canManageReview) {
+    return (
+      <Card className="rounded-lg">
+        <CardHeader>
+          <CardTitle>Revisão</CardTitle>
+          <CardDescription>
+            Apenas o Gestor pode validar e corrigir lançamentos.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    )
   }
 
   return (
@@ -173,8 +297,8 @@ export function Revisao() {
           </p>
           <h2 className="text-2xl font-semibold text-[#102f31]">Revisão</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Visualize lançamentos feitos pelos Líderes, ajuste realizados e
-            registre observações sem bloquear a operação.
+            Corrija produtividade, registre justificativas e mantenha histórico
+            auditável das alterações feitas pelo Gestor.
           </p>
         </div>
 
@@ -198,8 +322,8 @@ export function Revisao() {
         <CardHeader>
           <CardTitle>Lançamentos para revisão</CardTitle>
           <CardDescription>
-            Indicadores: verde igual ou acima da meta, amarelo de 80% a 99%,
-            vermelho abaixo de 80%.
+            Verde igual ou acima da meta, amarelo entre 80% e 99% e vermelho
+            abaixo de 80%.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -221,10 +345,19 @@ export function Revisao() {
                 const goal = Number(service?.dailyGoal) || 0
                 const realized = Number(item.realizedDaily) || 0
                 const performance = getPerformanceStatus(realized, goal)
+                const rowKey = getRowKey(execution.id, item.serviceId)
+                const workforcePlanned = execution.workforceActual.reduce(
+                  (total, role) => total + (Number(role.plannedCount) || 0),
+                  0
+                )
+                const workforceActual = execution.workforceActual.reduce(
+                  (total, role) => total + (Number(role.actualCount) || 0),
+                  0
+                )
 
                 return (
                   <div
-                    key={`${execution.id}-${item.serviceId}`}
+                    key={rowKey}
                     className="rounded-lg border bg-card p-4"
                   >
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -241,9 +374,10 @@ export function Revisao() {
                             {percentFormatter.format(performance.percentage)}%
                           </Badge>
                           {item.reviewCompleted && (
-                            <Badge variant="secondary">
-                              Revisão concluída
-                            </Badge>
+                            <Badge variant="secondary">Revisão concluída</Badge>
+                          )}
+                          {execution.closedAt && (
+                            <Badge variant="outline">Dia fechado</Badge>
                           )}
                         </div>
                         <p className="mt-1 text-sm text-muted-foreground">
@@ -253,7 +387,7 @@ export function Revisao() {
                         </p>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-2 text-sm lg:min-w-80">
+                      <div className="grid grid-cols-4 gap-2 text-sm lg:min-w-[28rem]">
                         <div className="rounded-lg border bg-muted/20 p-3">
                           <p className="text-xs text-muted-foreground">Meta</p>
                           <p className="font-semibold">
@@ -261,47 +395,67 @@ export function Revisao() {
                           </p>
                         </div>
                         <div className="rounded-lg border bg-muted/20 p-3">
-                          <p className="text-xs text-muted-foreground">
-                            Realizado
-                          </p>
+                          <p className="text-xs text-muted-foreground">Realizado</p>
                           <p className="font-semibold">
                             {realized} {service?.unit ?? ""}
                           </p>
                         </div>
                         <div className="rounded-lg border bg-muted/20 p-3">
-                          <p className="text-xs text-muted-foreground">
-                            Acumulado
-                          </p>
+                          <p className="text-xs text-muted-foreground">Efetivo</p>
                           <p className="font-semibold">
-                            {service?.completedQuantity ?? 0}{" "}
-                            {service?.unit ?? ""}
+                            {workforceActual}/{workforcePlanned}
+                          </p>
+                        </div>
+                        <div className="rounded-lg border bg-muted/20 p-3">
+                          <p className="text-xs text-muted-foreground">Acumulado</p>
+                          <p className="font-semibold">
+                            {service?.completedQuantity ?? 0} {service?.unit ?? ""}
                           </p>
                         </div>
                       </div>
                     </div>
 
-                    <div className="mt-4 grid gap-4 lg:grid-cols-[220px_1fr_auto] lg:items-end">
+                    <div className="mt-4 grid gap-4 lg:grid-cols-[220px_220px_1fr_auto] lg:items-end">
                       <FieldGroup>
                         <Field>
                           <FieldLabel htmlFor={`review-realized-${item.serviceId}`}>
-                            Editar realizado
+                            Corrigir realizado
                           </FieldLabel>
                           <Input
                             id={`review-realized-${item.serviceId}`}
                             type="number"
                             min="0"
                             step="0.01"
-                            value={item.realizedDaily}
+                            value={
+                              realizedDrafts[rowKey] ??
+                              getNumberInputValue(item.realizedDaily)
+                            }
                             onChange={(event) =>
-                              updateRealized(
-                                execution.id,
-                                item.serviceId,
-                                Number(event.target.value)
-                              )
+                              setRealizedDrafts((current) => ({
+                                ...current,
+                                [rowKey]: event.target.value,
+                              }))
                             }
                           />
                         </Field>
                       </FieldGroup>
+
+                      <Field>
+                        <FieldLabel htmlFor={`review-reason-${item.serviceId}`}>
+                          Motivo da correção
+                        </FieldLabel>
+                        <Input
+                          id={`review-reason-${item.serviceId}`}
+                          value={reviewReasonDrafts[rowKey] ?? ""}
+                          onChange={(event) =>
+                            setReviewReasonDrafts((current) => ({
+                              ...current,
+                              [rowKey]: event.target.value,
+                            }))
+                          }
+                          placeholder="Ex.: medição conferida em campo"
+                        />
+                      </Field>
 
                       <Field>
                         <FieldLabel htmlFor={`review-note-${item.serviceId}`}>
@@ -310,31 +464,50 @@ export function Revisao() {
                         <textarea
                           id={`review-note-${item.serviceId}`}
                           className="min-h-20 w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                          value={item.reviewObservation ?? ""}
-                          onChange={(event) =>
-                            updateReviewObservation(
-                              execution.id,
-                              item.serviceId,
-                              event.target.value
-                            )
+                          value={
+                            reviewObservationDrafts[rowKey] ??
+                            item.reviewObservation ??
+                            ""
                           }
-                          placeholder="Comentário opcional do Gestor"
+                          onChange={(event) =>
+                            setReviewObservationDrafts((current) => ({
+                              ...current,
+                              [rowKey]: event.target.value,
+                            }))
+                          }
+                          placeholder="Comentário do Gestor"
                         />
                       </Field>
 
-                      <Button
-                        type="button"
-                        variant={item.reviewCompleted ? "secondary" : "default"}
-                        onClick={() => completeReview(execution.id, item.serviceId)}
-                      >
-                        {item.reviewCompleted ? (
-                          <CheckCircle2 data-icon="inline-start" />
-                        ) : (
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => saveReviewRow(execution.id, item.serviceId)}
+                        >
                           <Save data-icon="inline-start" />
-                        )}
-                        {item.reviewCompleted ? "Concluída" : "Concluir revisão"}
-                      </Button>
+                          Salvar
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={item.reviewCompleted ? "secondary" : "default"}
+                          onClick={() => completeReview(execution.id, item.serviceId)}
+                        >
+                          {item.reviewCompleted ? (
+                            <CheckCircle2 data-icon="inline-start" />
+                          ) : (
+                            <Save data-icon="inline-start" />
+                          )}
+                          {item.reviewCompleted ? "Concluída" : "Concluir"}
+                        </Button>
+                      </div>
                     </div>
+
+                    {rowErrors[rowKey] && (
+                      <p className="mt-3 text-sm text-destructive">
+                        {rowErrors[rowKey]}
+                      </p>
+                    )}
 
                     {(item.observation || item.deviationReason) && (
                       <div className="mt-4 rounded-lg bg-muted/30 p-3 text-sm text-muted-foreground">
@@ -342,6 +515,31 @@ export function Revisao() {
                           <p>Motivo do desvio: {item.deviationReason}</p>
                         )}
                         {item.observation && <p>Observação: {item.observation}</p>}
+                      </div>
+                    )}
+
+                    {(item.reviewHistory?.length ?? 0) > 0 && (
+                      <div className="mt-4 rounded-lg border bg-muted/20 p-3">
+                        <div className="mb-3 flex items-center gap-2 text-sm font-medium">
+                          <History className="size-4" />
+                          Histórico de correções
+                        </div>
+                        <div className="flex flex-col gap-2 text-sm text-muted-foreground">
+                          {item.reviewHistory?.map((entry) => (
+                            <div
+                              key={entry.id}
+                              className="rounded-lg border bg-background p-3"
+                            >
+                              <p className="font-medium text-foreground">
+                                {entry.previousValue} para {entry.newValue}
+                              </p>
+                              <p>Motivo: {entry.reason}</p>
+                              <p>
+                                Data: {entry.changedAt.slice(0, 16).replace("T", " ")}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>

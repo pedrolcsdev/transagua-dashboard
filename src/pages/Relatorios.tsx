@@ -25,8 +25,6 @@ import {
 } from "@/components/ui/table"
 import {
   buildReportRows,
-  currencyFormatter,
-  getFuelTotals,
   getPerformanceLabel,
   getStatusClassName,
   isWithinPeriod,
@@ -35,7 +33,6 @@ import {
 } from "@/lib/analytics"
 import { loadContracts } from "@/lib/contracts"
 import { loadDailyExecutions } from "@/lib/daily-executions"
-import { fuelTypeOptions, getFuelEntryTotal, loadFuelEntries } from "@/lib/fuel"
 
 const statusOptions: Array<{
   value: PerformanceStatus | "all" | "reviewed" | "pending-review"
@@ -52,11 +49,9 @@ const statusOptions: Array<{
 function getReportData() {
   const contracts = loadContracts()
   const executions = loadDailyExecutions()
-  const fuelEntries = loadFuelEntries()
 
   return {
     contracts,
-    fuelEntries,
     rows: buildReportRows(contracts, executions),
   }
 }
@@ -70,7 +65,6 @@ export function Relatorios() {
   const [status, setStatus] = useState<
     PerformanceStatus | "all" | "reviewed" | "pending-review"
   >("all")
-  const [fuelType, setFuelType] = useState("all")
 
   const services = useMemo(
     () =>
@@ -118,23 +112,13 @@ export function Relatorios() {
   )
 
   const percentage = totals.meta > 0 ? (totals.realized / totals.meta) * 100 : 0
-
-  const filteredFuelEntries = useMemo(
-    () =>
-      data.fuelEntries.filter((entry) => {
-        const matchesContract =
-          contractId === "all" || entry.contractId === contractId
-        const matchesPeriod = isWithinPeriod(entry.date, startDate, endDate)
-        const matchesFuelType = fuelType === "all" || entry.fuelType === fuelType
-
-        return matchesContract && matchesPeriod && matchesFuelType
-      }),
-    [contractId, data.fuelEntries, endDate, fuelType, startDate]
+  const workforceDivergenceRows = useMemo(
+    () => filteredRows.filter((row) => row.workforceDifference !== 0).length,
+    [filteredRows]
   )
-
-  const fuelTotals = useMemo(
-    () => getFuelTotals(filteredFuelEntries),
-    [filteredFuelEntries]
+  const closedDays = useMemo(
+    () => filteredRows.filter((row) => Boolean(row.closedAt)).length,
+    [filteredRows]
   )
 
   const distribution = [
@@ -174,7 +158,7 @@ export function Relatorios() {
       <PageHeader
         eyebrow="Análise operacional"
         title="Relatórios"
-        description="Filtre contratos, períodos, serviços e status para acompanhar metas, realizado, diferenças e motivos de atraso."
+        description="Filtre contratos, períodos, serviços e status para acompanhar metas, realizado, revisão gerencial e situação do efetivo."
       />
 
       <Card className="rounded-lg border-[#d7e5e5] shadow-[0_12px_36px_rgba(12,55,56,0.06)]">
@@ -183,7 +167,7 @@ export function Relatorios() {
           <CardDescription>Refine a visão do relatório operacional.</CardDescription>
         </CardHeader>
         <CardContent>
-          <FieldGroup className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+          <FieldGroup className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
             <Field>
               <FieldLabel htmlFor="report-contract">Contrato</FieldLabel>
               <select
@@ -269,23 +253,6 @@ export function Relatorios() {
                 ))}
               </select>
             </Field>
-
-            <Field>
-              <FieldLabel htmlFor="report-fuel">Combustível</FieldLabel>
-              <select
-                id="report-fuel"
-                className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                value={fuelType}
-                onChange={(event) => setFuelType(event.target.value)}
-              >
-                <option value="all">Todos</option>
-                {fuelTypeOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </Field>
           </FieldGroup>
         </CardContent>
       </Card>
@@ -294,24 +261,25 @@ export function Relatorios() {
         <MetricCard title="Meta" description="Soma filtrada" value={numberFormatter.format(totals.meta)} />
         <MetricCard title="Realizado" description="Produção filtrada" value={numberFormatter.format(totals.realized)} />
         <MetricCard title="Percentual" description="Realizado / meta" value={`${numberFormatter.format(percentage)}%`} />
-        <MetricCard title="Diferença" description="Realizado - meta" value={numberFormatter.format(totals.difference)} tone={totals.difference < 0 ? "danger" : "positive"} />
+        <MetricCard
+          title="Diferença"
+          description="Realizado - meta"
+          value={numberFormatter.format(totals.difference)}
+          tone={totals.difference < 0 ? "danger" : "positive"}
+        />
       </section>
 
-      <section className="grid gap-4 md:grid-cols-3">
+      <section className="grid gap-4 md:grid-cols-2">
         <MetricCard
-          title="Combustível"
-          description="Custo filtrado"
-          value={currencyFormatter.format(fuelTotals.totalValue)}
+          title="Divergências de efetivo"
+          description="Linhas com efetivo diferente do planejado"
+          value={workforceDivergenceRows}
+          tone={workforceDivergenceRows > 0 ? "warning" : "default"}
         />
         <MetricCard
-          title="Litros"
-          description="Gasolina + diesel"
-          value={numberFormatter.format(fuelTotals.liters)}
-        />
-        <MetricCard
-          title="Registros de frota"
-          description="Abastecimentos filtrados"
-          value={filteredFuelEntries.length}
+          title="Dias fechados"
+          description="Lançamentos já encerrados pelo Líder"
+          value={closedDays}
         />
       </section>
 
@@ -352,7 +320,7 @@ export function Relatorios() {
             Detalhamento
           </CardTitle>
           <CardDescription>
-            Meta, realizado, percentual, diferença, observações e motivos.
+            Meta, realizado, percentual, observações, revisão do Gestor e efetivo do lançamento.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -373,7 +341,8 @@ export function Relatorios() {
                   <TableHead>Meta</TableHead>
                   <TableHead>Realizado</TableHead>
                   <TableHead>%</TableHead>
-                  <TableHead>Diferença</TableHead>
+                  <TableHead>Efetivo</TableHead>
+                  <TableHead>Revisão</TableHead>
                   <TableHead>Observações</TableHead>
                   <TableHead>Motivo</TableHead>
                 </TableRow>
@@ -402,7 +371,20 @@ export function Relatorios() {
                       {numberFormatter.format(row.percentage)}%
                     </TableCell>
                     <TableCell>
-                      {numberFormatter.format(row.difference)} {row.unit}
+                      <span
+                        className={
+                          row.workforceDifference === 0
+                            ? "text-foreground"
+                            : row.workforceDifference > 0
+                              ? "text-emerald-700"
+                              : "text-amber-700"
+                        }
+                      >
+                        {row.workforceSummary}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      {row.reviewCompleted ? "Concluída" : "Pendente"}
                     </TableCell>
                     <TableCell className="max-w-72 whitespace-normal">
                       {[row.observation, row.reviewObservation]
@@ -412,67 +394,6 @@ export function Relatorios() {
                     <TableCell>{row.deviationReason || "-"}</TableCell>
                   </TableRow>
                 ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card className="rounded-lg border-[#d7e5e5] shadow-[0_12px_36px_rgba(12,55,56,0.06)]">
-        <CardHeader>
-          <CardTitle>Abastecimento</CardTitle>
-          <CardDescription>
-            Custos operacionais por contrato, combustível, equipamento e período.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {filteredFuelEntries.length === 0 ? (
-            <EmptyState
-              icon={ClipboardList}
-              title="Nenhum abastecimento encontrado"
-              description="Os lançamentos de combustível compatíveis com os filtros aparecerão aqui."
-            />
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Data</TableHead>
-                  <TableHead>Contrato</TableHead>
-                  <TableHead>Equipamento</TableHead>
-                  <TableHead>Combustível</TableHead>
-                  <TableHead>Litros</TableHead>
-                  <TableHead>Valor</TableHead>
-                  <TableHead>Saldo devedor</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredFuelEntries.map((entry) => {
-                  const contract = data.contracts.find(
-                    (item) => item.id === entry.contractId
-                  )
-
-                  return (
-                    <TableRow key={entry.id}>
-                      <TableCell>{entry.date}</TableCell>
-                      <TableCell>{contract?.name ?? "-"}</TableCell>
-                      <TableCell>{entry.equipment}</TableCell>
-                      <TableCell>
-                        {
-                          fuelTypeOptions.find(
-                            (option) => option.value === entry.fuelType
-                          )?.label
-                        }
-                      </TableCell>
-                      <TableCell>{numberFormatter.format(entry.liters)}</TableCell>
-                      <TableCell>
-                        {currencyFormatter.format(getFuelEntryTotal(entry))}
-                      </TableCell>
-                      <TableCell>
-                        {currencyFormatter.format(entry.outstandingBalance)}
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
               </TableBody>
             </Table>
           )}

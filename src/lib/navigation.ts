@@ -4,9 +4,8 @@ import {
   ClipboardCheck,
   ClipboardList,
   FileText,
-  Fuel,
   HardHat,
-  Users,
+  PackageOpen,
 } from "lucide-react"
 
 import type { UserProfile } from "@/lib/profile"
@@ -21,10 +20,9 @@ export const allNavigationItems: NavItem[] = [
   { label: "Dashboard", path: "/dashboard", icon: BarChart3 },
   { label: "Contratos", path: "/contratos", icon: FileText },
   { label: "Lançamento Diário", path: "/lancamento-diario", icon: HardHat },
-  { label: "Abastecimento", path: "/abastecimento", icon: Fuel },
+  { label: "Solicitações", path: "/solicitacoes", icon: PackageOpen },
   { label: "Revisão", path: "/revisao", icon: ClipboardCheck },
   { label: "Relatórios", path: "/relatorios", icon: ClipboardList },
-  { label: "Usuários", path: "/usuarios", icon: Users },
 ]
 
 const navigationByPath = Object.fromEntries(
@@ -32,19 +30,21 @@ const navigationByPath = Object.fromEntries(
 ) as Record<string, NavItem>
 
 export const navigationByProfile: Record<UserProfile, NavItem[]> = {
-  leader: [
+  leader: [navigationByPath["/lancamento-diario"], navigationByPath["/solicitacoes"]],
+  manager: [
     navigationByPath["/dashboard"],
-    navigationByPath["/lancamento-diario"],
-    navigationByPath["/abastecimento"],
+    navigationByPath["/contratos"],
     navigationByPath["/revisao"],
+    navigationByPath["/relatorios"],
+    navigationByPath["/solicitacoes"],
   ],
-  manager: allNavigationItems,
   director: [
     navigationByPath["/dashboard"],
+    navigationByPath["/contratos"],
     navigationByPath["/relatorios"],
-    navigationByPath["/abastecimento"],
-    navigationByPath["/revisao"],
+    navigationByPath["/solicitacoes"],
   ],
+  logistics: [navigationByPath["/solicitacoes"]],
 }
 
 export function getPageTitle(pathname: string) {

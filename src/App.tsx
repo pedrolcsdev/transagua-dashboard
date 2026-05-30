@@ -17,11 +17,11 @@ import {
   type UserProfile,
 } from "@/lib/profile"
 import { Contratos } from "@/pages/Contratos"
-import { Abastecimento } from "@/pages/Abastecimento"
 import { Dashboard } from "@/pages/Dashboard"
 import { LancamentoDiario } from "@/pages/LancamentoDiario"
 import { Relatorios } from "@/pages/Relatorios"
 import { Revisao } from "@/pages/Revisao"
+import { Solicitacoes } from "@/pages/Solicitacoes"
 import { Usuarios } from "@/pages/Usuarios"
 
 function ShellRoutes() {
@@ -40,7 +40,7 @@ function ShellRoutes() {
 
   useEffect(() => {
     if (!allowedPaths.includes(location.pathname)) {
-      navigate("/dashboard", { replace: true })
+      navigate(allowedPaths[0] ?? "/dashboard", { replace: true })
     }
   }, [allowedPaths, location.pathname, navigate])
 
@@ -49,12 +49,24 @@ function ShellRoutes() {
       <Route
         element={<AppShell profile={profile} onProfileChange={setProfile} />}
       >
-        <Route index element={<Navigate to="/dashboard" replace />} />
+        <Route
+          index
+          element={
+            <Navigate
+              to={navigationByProfile[profile][0]?.path ?? "/dashboard"}
+              replace
+            />
+          }
+        />
         <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/contratos" element={<Contratos />} />
-        <Route path="/abastecimento" element={<Abastecimento />} />
-        <Route path="/lancamento-diario" element={<LancamentoDiario />} />
-        <Route path="/revisao" element={<Revisao />} />
+        <Route path="/contratos" element={<Contratos profile={profile} />} />
+        <Route path="/solicitacoes" element={<Solicitacoes profile={profile} />} />
+        <Route path="/abastecimento" element={<Navigate to="/solicitacoes" replace />} />
+        <Route
+          path="/lancamento-diario"
+          element={<LancamentoDiario profile={profile} />}
+        />
+        <Route path="/revisao" element={<Revisao profile={profile} />} />
         <Route path="/relatorios" element={<Relatorios />} />
         <Route path="/usuarios" element={<Usuarios />} />
         <Route

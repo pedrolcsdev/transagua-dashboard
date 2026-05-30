@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react"
-import { CalendarDays, ClipboardList, Save } from "lucide-react"
+import { CalendarDays, ClipboardList, Lock, Save, ShieldCheck, Users } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -17,8 +17,10 @@ import { loadContracts, saveContracts, type Contract } from "@/lib/contracts"
 import {
   DAILY_EXECUTIONS_STORAGE_KEY,
   buildExecutionItems,
+  buildWorkforceActual,
   deviationReasonOptions,
   getTodayInputValue,
+  isExecutionClosed,
   loadDailyExecutions,
   saveDailyExecutions,
   syncContractProgressFromExecutions,
@@ -26,12 +28,11 @@ import {
   type DailyExecution,
   type DailyExecutionFormItem,
   type DeviationReason,
+  type WorkforceActualItem,
 } from "@/lib/daily-executions"
 import { createId } from "@/lib/contracts"
-
-const percentFormatter = new Intl.NumberFormat("pt-BR", {
-  maximumFractionDigits: 1,
-})
+import { hasCapability } from "@/lib/permissions"
+import type { UserProfile } from "@/lib/profile"
 
 function getInitialExecutionState() {
   const contracts = loadContracts()
@@ -55,10 +56,21 @@ function getInitialExecutionState() {
     items: selectedContract
       ? buildExecutionItems(selectedContract, existingExecution)
       : [],
+    workforceActual: selectedContract
+      ? buildWorkforceActual(selectedContract, existingExecution)
+      : [],
   }
 }
 
-export function LancamentoDiario() {
+type LancamentoDiarioProps = {
+  profile: UserProfile
+}
+
+function getNumberInputValue(value: number) {
+  return value === 0 ? "" : String(value)
+}
+
+export function LancamentoDiario({ profile }: LancamentoDiarioProps) {
   const [initialState] = useState(() => getInitialExecutionState())
   const [contracts, setContracts] = useState<Contract[]>(
     () => initialState.contracts
@@ -75,9 +87,13 @@ export function LancamentoDiario() {
   const [items, setItems] = useState<DailyExecutionFormItem[]>(
     () => initialState.items
   )
+  const [workforceActual, setWorkforceActual] = useState<WorkforceActualItem[]>(
+    () => initialState.workforceActual
+  )
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [feedback, setFeedback] = useState("")
 
+  const canManageExecution = hasCapability(profile, "daily-execution.manage")
   const availableContracts = useMemo(
     () => contracts.filter((contract) => contract.status !== "encerrado"),
     [contracts]
@@ -99,10 +115,27 @@ export function LancamentoDiario() {
     [executions, selectedContractId, selectedDate]
   )
 
+  const executionIsClosed = isExecutionClosed(existingExecution)
   const totalRealizedToday = useMemo(
     () =>
       items.reduce((total, item) => total + (Number(item.realizedDaily) || 0), 0),
     [items]
+  )
+  const totalPlannedWorkforce = useMemo(
+    () =>
+      workforceActual.reduce(
+        (total, role) => total + (Number(role.plannedCount) || 0),
+        0
+      ),
+    [workforceActual]
+  )
+  const totalActualWorkforce = useMemo(
+    () =>
+      workforceActual.reduce(
+        (total, role) => total + (Number(role.actualCount) || 0),
+        0
+      ),
+    [workforceActual]
   )
 
   useEffect(() => {
@@ -131,6 +164,14 @@ export function LancamentoDiario() {
     })
   }
 
+  function updateWorkforce(roleId: string, actualCount: number) {
+    setWorkforceActual((currentWorkforce) =>
+      currentWorkforce.map((role) =>
+        role.roleId === roleId ? { ...role, actualCount } : role
+      )
+    )
+  }
+
   function loadItemsForSelection(contractId: string, date: string) {
     const contract = contracts.find((item) => item.id === contractId)
     const execution = executions.find(
@@ -138,6 +179,7 @@ export function LancamentoDiario() {
     )
 
     setItems(contract ? buildExecutionItems(contract, execution) : [])
+    setWorkforceActual(contract ? buildWorkforceActual(contract, execution) : [])
     setFieldErrors({})
     setFeedback("")
   }
@@ -174,22 +216,34 @@ export function LancamentoDiario() {
     event.preventDefault()
     setFeedback("")
 
-    if (!selectedContract || !validateItems()) {
+    if (!canManageExecution || executionIsClosed || !selectedContract || !validateItems()) {
       return
     }
 
     const now = new Date().toISOString()
     const execution: DailyExecution = {
-      id: createId(),
+      id: existingExecution?.id ?? createId(),
       contractId: selectedContract.id,
       date: selectedDate,
-      createdAt: now,
+      createdAt: existingExecution?.createdAt ?? now,
       updatedAt: now,
+      closedAt: existingExecution?.closedAt,
+      closedByProfile: existingExecution?.closedByProfile,
+      workforceActual: workforceActual.map((role) => ({
+        roleId: role.roleId,
+        roleName: role.roleName,
+        plannedCount: Number(role.plannedCount) || 0,
+        actualCount: Number(role.actualCount) || 0,
+      })),
       items: items.map((item) => ({
         serviceId: item.serviceId,
         realizedDaily: Number(item.realizedDaily) || 0,
         observation: item.observation.trim(),
         deviationReason: item.deviationReason,
+        reviewObservation: item.reviewObservation,
+        reviewCompleted: item.reviewCompleted,
+        reviewedAt: item.reviewedAt,
+        reviewHistory: item.reviewHistory ?? [],
       })),
     }
 
@@ -198,17 +252,69 @@ export function LancamentoDiario() {
       contracts,
       nextExecutions
     )
+    const refreshedContract =
+      syncedContracts.find((contract) => contract.id === selectedContract.id) ??
+      selectedContract
+    const refreshedExecution = nextExecutions.find(
+      (item) =>
+        item.contractId === selectedContract.id && item.date === selectedDate
+    )
 
     setExecutions(nextExecutions)
     setContracts(syncedContracts)
-    setItems(
-      buildExecutionItems(
-        syncedContracts.find((contract) => contract.id === selectedContract.id) ??
-          selectedContract,
-        execution
+    setItems(buildExecutionItems(refreshedContract, refreshedExecution))
+    setWorkforceActual(buildWorkforceActual(refreshedContract, refreshedExecution))
+    setFeedback("Lançamento diário salvo com sucesso.")
+  }
+
+  function closeDay() {
+    if (!canManageExecution) {
+      return
+    }
+
+    if (!existingExecution) {
+      setFeedback("Salve o lançamento antes de fechar o dia.")
+      return
+    }
+
+    if (executionIsClosed) {
+      setFeedback("Este expediente já foi fechado.")
+      return
+    }
+
+    const confirmClosing = window.confirm(
+      "Deseja fechar o dia deste contrato nesta data?"
+    )
+
+    if (!confirmClosing) {
+      return
+    }
+
+    const confirmBlocking = window.confirm(
+      "Confirma o fechamento? Depois disso, o Líder não poderá mais editar este lançamento."
+    )
+
+    if (!confirmBlocking) {
+      return
+    }
+
+    const now = new Date().toISOString()
+
+    setExecutions((currentExecutions) =>
+      currentExecutions.map((execution) =>
+        execution.id === existingExecution.id
+          ? {
+              ...execution,
+              closedAt: now,
+              closedByProfile: profile,
+              updatedAt: now,
+            }
+          : execution
       )
     )
-    setFeedback("Lançamento diário salvo e contrato atualizado.")
+    setFeedback(
+      "Dia fechado com sucesso. A partir de agora, apenas o Gestor pode ajustar pela revisão."
+    )
   }
 
   return (
@@ -222,17 +328,27 @@ export function LancamentoDiario() {
             Lançamento Diário
           </h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Selecione um contrato, informe a data e registre a quantidade
-            realizada por serviço.
+            Registre produtividade e efetivo diário por função. Depois do
+            fechamento do dia, somente o Gestor pode corrigir o lançamento.
           </p>
         </div>
 
-        <Card size="sm" className="rounded-lg">
-          <CardContent className="px-4">
-            <p className="text-xs text-muted-foreground">Realizado no dia</p>
-            <p className="text-xl font-semibold">{totalRealizedToday}</p>
-          </CardContent>
-        </Card>
+        <div className="grid grid-cols-2 gap-3">
+          <Card size="sm" className="rounded-lg">
+            <CardContent className="px-4">
+              <p className="text-xs text-muted-foreground">Realizado no dia</p>
+              <p className="text-xl font-semibold">{totalRealizedToday}</p>
+            </CardContent>
+          </Card>
+          <Card size="sm" className="rounded-lg">
+            <CardContent className="px-4">
+              <p className="text-xs text-muted-foreground">Efetivo presente</p>
+              <p className="text-xl font-semibold">
+                {totalActualWorkforce}/{totalPlannedWorkforce}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
       </section>
 
       <Card className="rounded-lg">
@@ -287,13 +403,88 @@ export function LancamentoDiario() {
                 </Field>
               </FieldGroup>
 
-              {existingExecution && (
+              {existingExecution && !executionIsClosed && (
                 <div className="flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
                   <CalendarDays />
                   Este contrato já possui lançamento nesta data. Ao salvar, o
                   registro será atualizado.
                 </div>
               )}
+
+              {executionIsClosed && (
+                <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  <Lock className="size-4" />
+                  Expediente fechado em {existingExecution?.closedAt?.slice(0, 16).replace("T", " ")}.
+                  Apenas o Gestor pode corrigir pela tela de revisão.
+                </div>
+              )}
+
+              <Card className="rounded-lg border-dashed">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Users className="size-4" />
+                    Efetivo do dia
+                  </CardTitle>
+                  <CardDescription>
+                    Compare o efetivo planejado do contrato com o time presente na
+                    obra.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-4">
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <div className="rounded-lg border bg-muted/20 p-3">
+                      <p className="text-xs text-muted-foreground">Planejado</p>
+                      <p className="text-lg font-semibold">{totalPlannedWorkforce}</p>
+                    </div>
+                    <div className="rounded-lg border bg-muted/20 p-3">
+                      <p className="text-xs text-muted-foreground">Realizado</p>
+                      <p className="text-lg font-semibold">{totalActualWorkforce}</p>
+                    </div>
+                    <div className="rounded-lg border bg-muted/20 p-3">
+                      <p className="text-xs text-muted-foreground">Diferença</p>
+                      <p className="text-lg font-semibold">
+                        {totalActualWorkforce - totalPlannedWorkforce}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {workforceActual.map((role) => (
+                      <div
+                        key={role.roleId}
+                        className="grid gap-3 rounded-lg border bg-muted/20 p-3 sm:grid-cols-[1fr_140px]"
+                      >
+                        <div>
+                          <p className="font-medium">{role.roleName || "Função"}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Planejado: {role.plannedCount}
+                          </p>
+                        </div>
+                        <Field>
+                          <FieldLabel htmlFor={`workforce-${role.roleId}`}>
+                            Presente
+                          </FieldLabel>
+                          <Input
+                            id={`workforce-${role.roleId}`}
+                            type="number"
+                            min="0"
+                            value={getNumberInputValue(role.actualCount)}
+                            onChange={(event) =>
+                              updateWorkforce(
+                                role.roleId,
+                                event.target.value === ""
+                                  ? 0
+                                  : Number(event.target.value)
+                              )
+                            }
+                            disabled={executionIsClosed}
+                          />
+                        </Field>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
 
               <div className="grid gap-4 xl:grid-cols-2">
                 {items.map((item) => {
@@ -328,51 +519,27 @@ export function LancamentoDiario() {
                       <CardContent className="flex flex-col gap-4">
                         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                           <div className="rounded-lg border bg-muted/20 p-3">
-                            <p className="text-xs text-muted-foreground">
-                              Total
-                            </p>
+                            <p className="text-xs text-muted-foreground">Total</p>
                             <p className="font-semibold">
                               {item.totalQuantity} {item.unit}
                             </p>
                           </div>
                           <div className="rounded-lg border bg-muted/20 p-3">
-                            <p className="text-xs text-muted-foreground">
-                              Acumulado
-                            </p>
+                            <p className="text-xs text-muted-foreground">Acumulado</p>
                             <p className="font-semibold">
                               {projectedTotal} {item.unit}
                             </p>
                           </div>
                           <div className="rounded-lg border bg-muted/20 p-3">
-                            <p className="text-xs text-muted-foreground">
-                              Avanço
-                            </p>
+                            <p className="text-xs text-muted-foreground">Avanço</p>
                             <p className="font-semibold">
-                              {percentFormatter.format(progress)}%
+                              {dailyPercentage.toFixed(1)}%
                             </p>
                           </div>
                           <div className="rounded-lg border bg-muted/20 p-3">
-                            <p className="text-xs text-muted-foreground">
-                              Saldo
-                            </p>
+                            <p className="text-xs text-muted-foreground">Saldo</p>
                             <p className="font-semibold">
-                              {percentFormatter.format(physicalBalance)} {item.unit}
-                            </p>
-                          </div>
-                          <div className="rounded-lg border bg-muted/20 p-3">
-                            <p className="text-xs text-muted-foreground">
-                              Meta x realizado
-                            </p>
-                            <p className="font-semibold">
-                              {percentFormatter.format(dailyPercentage)}%
-                            </p>
-                          </div>
-                          <div className="rounded-lg border bg-muted/20 p-3">
-                            <p className="text-xs text-muted-foreground">
-                              Diferença
-                            </p>
-                            <p className="font-semibold">
-                              {percentFormatter.format(dailyDifference)} {item.unit}
+                              {physicalBalance.toFixed(1)} {item.unit}
                             </p>
                           </div>
                         </div>
@@ -387,15 +554,18 @@ export function LancamentoDiario() {
                               type="number"
                               min="0"
                               step="0.01"
-                              value={item.realizedDaily}
+                              value={getNumberInputValue(item.realizedDaily)}
                               onChange={(event) =>
                                 updateItem(
                                   item.serviceId,
                                   "realizedDaily",
-                                  Number(event.target.value)
+                                  event.target.value === ""
+                                    ? 0
+                                    : Number(event.target.value)
                                 )
                               }
                               required
+                              disabled={executionIsClosed}
                             />
                           </Field>
 
@@ -414,6 +584,7 @@ export function LancamentoDiario() {
                                   event.target.value as DeviationReason | ""
                                 )
                               }
+                              disabled={executionIsClosed}
                             >
                               <option value="">Sem desvio informado</option>
                               {deviationReasonOptions.map((option) => (
@@ -430,9 +601,7 @@ export function LancamentoDiario() {
                                 Observação
                               </FieldLabel>
                               {isBelowGoal && (
-                                <Badge variant="destructive">
-                                  Abaixo da meta
-                                </Badge>
+                                <Badge variant="destructive">Abaixo da meta</Badge>
                               )}
                             </div>
                             <textarea
@@ -452,12 +621,17 @@ export function LancamentoDiario() {
                                   ? "Obrigatória para realizado abaixo da meta"
                                   : "Opcional"
                               }
+                              disabled={executionIsClosed}
                             />
                             {fieldErrors[item.serviceId] && (
                               <p className="text-sm text-destructive">
                                 {fieldErrors[item.serviceId]}
                               </p>
                             )}
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              Diferença do dia: {dailyDifference.toFixed(1)} {item.unit} ·
+                              Avanço acumulado: {progress.toFixed(1)}%
+                            </p>
                           </Field>
                         </FieldGroup>
                       </CardContent>
@@ -473,7 +647,11 @@ export function LancamentoDiario() {
               )}
 
               <CardFooter className="justify-end gap-2 px-0 pb-0">
-                <Button type="submit">
+                <Button type="button" variant="outline" onClick={closeDay}>
+                  <ShieldCheck data-icon="inline-start" />
+                  Fechar dia
+                </Button>
+                <Button type="submit" disabled={!canManageExecution || executionIsClosed}>
                   <Save data-icon="inline-start" />
                   Salvar lançamento
                 </Button>

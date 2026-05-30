@@ -1,8 +1,16 @@
-import { AlertTriangle, BarChart3, Briefcase, Fuel, TrendingUp } from "lucide-react"
+import {
+  AlertTriangle,
+  Briefcase,
+  ClipboardList,
+  PackageOpen,
+  TrendingDown,
+  TrendingUp,
+  Users,
+} from "lucide-react"
 
 import { MetricCard } from "@/components/MetricCard"
 import { PageHeader } from "@/components/PageHeader"
-import { HorizontalBarChart, MetricBar } from "@/components/SimpleCharts"
+import { HorizontalBarChart } from "@/components/SimpleCharts"
 import { EmptyState } from "@/components/StateViews"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -15,65 +23,85 @@ import {
 import {
   buildContractSummaries,
   buildReportRows,
-  currencyFormatter,
-  getFuelTotals,
+  countPendingRequests,
+  getLatestExecutionForContract,
   getPerformanceLabel,
   getStatusClassName,
+  hasExecutionBelowGoal,
+  hasWorkforceDivergence,
   numberFormatter,
 } from "@/lib/analytics"
 import { loadContracts } from "@/lib/contracts"
 import { loadDailyExecutions } from "@/lib/daily-executions"
-import { loadFuelEntries } from "@/lib/fuel"
+import { loadOperationalRequests } from "@/lib/requests"
+
+const DASHBOARD_TOLERANCE = 5
 
 function getDashboardData() {
   const contracts = loadContracts()
   const executions = loadDailyExecutions()
-  const fuelEntries = loadFuelEntries()
+  const requests = loadOperationalRequests()
   const summaries = buildContractSummaries(contracts, executions)
   const rows = buildReportRows(contracts, executions)
-  const fuelTotals = getFuelTotals(fuelEntries)
-
   const activeContracts = contracts.filter(
     (contract) => contract.status === "ativo"
-  ).length
-  const plannedValue = summaries.reduce(
-    (total, summary) => total + summary.plannedValue,
-    0
   )
-  const realizedValue = summaries.reduce(
-    (total, summary) => total + summary.realizedValue,
-    0
+  const delayedContracts = summaries.filter(
+    (summary) =>
+      summary.contract.status === "ativo" &&
+      summary.progressGap < -DASHBOARD_TOLERANCE
   )
-  const plannedQuantity = summaries.reduce(
-    (total, summary) => total + summary.plannedQuantity,
-    0
+  const aheadContracts = summaries.filter(
+    (summary) =>
+      summary.contract.status === "ativo" &&
+      summary.progressGap > DASHBOARD_TOLERANCE
   )
-  const realizedQuantity = summaries.reduce(
-    (total, summary) => total + summary.realizedQuantity,
-    0
-  )
-  const percentExecuted =
-    plannedQuantity > 0 ? (realizedQuantity / plannedQuantity) * 100 : 0
-  const productivity =
-    rows.length > 0
-      ? rows.reduce((total, row) => total + row.percentage, 0) / rows.length
-      : 0
+  const contractsBelowGoal = activeContracts.filter((contract) => {
+    const latestExecution = getLatestExecutionForContract(contract.id, executions)
+    return latestExecution ? hasExecutionBelowGoal(latestExecution, contract) : false
+  })
+  const workforceDivergenceContracts = activeContracts.filter((contract) => {
+    const latestExecution = getLatestExecutionForContract(contract.id, executions)
+    return latestExecution ? hasWorkforceDivergence(latestExecution) : false
+  })
+  const pendingRequests = countPendingRequests(requests)
 
-  const alerts = rows
-    .filter((row) => row.status === "red" || row.status === "yellow")
-    .slice(0, 5)
+  const alerts = [
+    ...rows
+      .filter((row) => row.status === "red")
+      .slice(0, 3)
+      .map((row) => ({
+        id: row.id,
+        title: row.serviceName,
+        description: `${row.contractName} · ${row.date}`,
+        badgeLabel: getPerformanceLabel(row.status),
+        badgeClassName: getStatusClassName(row.status),
+      })),
+    ...delayedContracts.slice(0, 2).map((summary) => ({
+      id: `delay-${summary.contract.id}`,
+      title: summary.contract.name,
+      description: `Atrasado ${numberFormatter.format(Math.abs(summary.progressGap))}% frente ao esperado`,
+      badgeLabel: "Contrato atrasado",
+      badgeClassName: "border-red-200 bg-red-50 text-red-700",
+    })),
+    ...workforceDivergenceContracts.slice(0, 2).map((contract) => ({
+      id: `workforce-${contract.id}`,
+      title: contract.name,
+      description: "Último lançamento com divergência entre efetivo planejado e realizado",
+      badgeLabel: "Efetivo divergente",
+      badgeClassName: "border-amber-200 bg-amber-50 text-amber-700",
+    })),
+  ].slice(0, 6)
 
   return {
     summaries,
-    rows,
-    activeContracts,
-    plannedValue,
-    realizedValue,
-    financialBalance: plannedValue - realizedValue,
-    percentExecuted,
-    productivity,
+    activeContracts: activeContracts.length,
+    delayedContracts,
+    aheadContracts,
+    contractsBelowGoal,
+    workforceDivergenceContracts,
+    pendingRequests,
     alerts,
-    fuelTotals,
   }
 }
 
@@ -90,99 +118,76 @@ export function Dashboard() {
     helper: `${numberFormatter.format(summary.percentExecuted)}%`,
   }))
 
-  const productivityTone =
-    data.productivity >= 100
-      ? "positive"
-      : data.productivity >= 80
-        ? "warning"
-        : "danger"
-
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         eyebrow="Visão executiva"
         title="Dashboard"
-        description="Acompanhe execução física, valores planejados e sinais operacionais a partir dos contratos e lançamentos diários."
+        description="Acompanhe ritmo contratual, solicitações pendentes, equipes abaixo da meta e divergências de efetivo sem perder o foco operacional."
       />
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <MetricCard
           title="Contratos ativos"
-          description="Contratos em operação"
+          description="Em operação"
           value={data.activeContracts}
           icon={Briefcase}
         />
-
         <MetricCard
-          title="Percentual executado"
-          description="Realizado físico acumulado"
-          value={`${numberFormatter.format(data.percentExecuted)}%`}
-          icon={BarChart3}
-        >
-          <MetricBar value={data.percentExecuted} />
-        </MetricCard>
-
-        <MetricCard
-          title="Valor planejado"
-          description="Valor contratado"
-          value={currencyFormatter.format(data.plannedValue)}
+          title="Contratos atrasados"
+          description="Abaixo do esperado"
+          value={data.delayedContracts.length}
+          icon={TrendingDown}
+          tone={data.delayedContracts.length > 0 ? "danger" : "default"}
         />
-
         <MetricCard
-          title="Valor realizado"
-          description="Executado físico x valor unitário"
-          value={currencyFormatter.format(data.realizedValue)}
+          title="Contratos adiantados"
+          description="Acima do esperado"
+          value={data.aheadContracts.length}
+          icon={TrendingUp}
+          tone={data.aheadContracts.length > 0 ? "positive" : "default"}
+        />
+        <MetricCard
+          title="Solicitações pendentes"
+          description="Aguardando logística"
+          value={data.pendingRequests}
+          icon={PackageOpen}
+          tone={data.pendingRequests > 0 ? "warning" : "default"}
+        />
+        <MetricCard
+          title="Divergência de efetivo"
+          description="Último lançamento do contrato"
+          value={data.workforceDivergenceContracts.length}
+          icon={Users}
+          tone={data.workforceDivergenceContracts.length > 0 ? "warning" : "default"}
         />
       </section>
 
       <section className="grid gap-4 lg:grid-cols-4">
         <MetricCard
-          title="Saldo financeiro"
-          description="Contratado menos executado"
-          value={currencyFormatter.format(data.financialBalance)}
-          tone={data.financialBalance < 0 ? "danger" : "positive"}
+          title="Equipes abaixo da meta"
+          description="Último lançamento do contrato"
+          value={data.contractsBelowGoal.length}
+          icon={ClipboardList}
+          tone={data.contractsBelowGoal.length > 0 ? "danger" : "default"}
         />
 
-        <MetricCard
-          title="Produtividade"
-          description="Média realizado/meta dos lançamentos"
-          value={`${numberFormatter.format(data.productivity)}%`}
-          icon={TrendingUp}
-          tone={productivityTone}
-        >
-          <MetricBar
-            value={data.productivity}
-            className={
-              data.productivity >= 100
-                ? "bg-emerald-600"
-                : data.productivity >= 80
-                  ? "bg-amber-500"
-                  : "bg-red-600"
-            }
-          />
-        </MetricCard>
-
-        <MetricCard
-          title="Combustível"
-          description={`${numberFormatter.format(data.fuelTotals.liters)} litros lançados`}
-          value={currencyFormatter.format(data.fuelTotals.totalValue)}
-          icon={Fuel}
-        />
-
-        <Card className="rounded-lg border-[#d7e5e5] shadow-[0_12px_36px_rgba(12,55,56,0.06)]">
+        <Card className="rounded-lg border-[#d7e5e5] shadow-[0_12px_36px_rgba(12,55,56,0.06)] lg:col-span-3">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-sm">
               <AlertTriangle />
               Alertas operacionais
             </CardTitle>
-            <CardDescription>Itens abaixo ou próximos da meta</CardDescription>
+            <CardDescription>
+              Itens críticos, atrasos contratuais e divergências de efetivo.
+            </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             {data.alerts.length === 0 ? (
               <EmptyState
                 icon={AlertTriangle}
                 title="Sem alertas operacionais"
-                description="Os lançamentos dentro da meta aparecerão sem pendências nesta área."
+                description="Os contratos e lançamentos atuais não possuem pendências críticas."
               />
             ) : (
               data.alerts.map((alert) => (
@@ -191,16 +196,13 @@ export function Dashboard() {
                   className="flex items-start justify-between gap-3 rounded-lg border bg-muted/20 p-3"
                 >
                   <div className="min-w-0">
-                    <p className="truncate font-medium">{alert.serviceName}</p>
+                    <p className="truncate font-medium">{alert.title}</p>
                     <p className="text-xs text-muted-foreground">
-                      {alert.contractName} · {alert.date}
+                      {alert.description}
                     </p>
                   </div>
-                  <Badge
-                    variant="outline"
-                    className={getStatusClassName(alert.status)}
-                  >
-                    {getPerformanceLabel(alert.status)}
+                  <Badge variant="outline" className={alert.badgeClassName}>
+                    {alert.badgeLabel}
                   </Badge>
                 </div>
               ))
@@ -218,7 +220,7 @@ export function Dashboard() {
           <CardContent>
             {chartItems.length === 0 ? (
               <EmptyState
-                icon={BarChart3}
+                icon={Briefcase}
                 title="Sem dados de execução"
                 description="Cadastre contratos e lançamentos para visualizar este gráfico."
               />
@@ -230,31 +232,54 @@ export function Dashboard() {
 
         <Card className="rounded-lg border-[#d7e5e5] shadow-[0_12px_36px_rgba(12,55,56,0.06)]">
           <CardHeader>
-            <CardTitle>Financeiro</CardTitle>
-            <CardDescription>Planejado versus realizado</CardDescription>
+            <CardTitle>Ritmo contratual</CardTitle>
+            <CardDescription>
+              Comparação entre o executado e o progresso esperado.
+            </CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <div>
-              <div className="mb-2 flex justify-between gap-3 text-sm">
-                <span>Contratado</span>
-                <span>{currencyFormatter.format(data.plannedValue)}</span>
-              </div>
-              <MetricBar value={100} className="bg-[#0f7772]" />
-            </div>
-            <div>
-              <div className="mb-2 flex justify-between gap-3 text-sm">
-                <span>Realizado</span>
-                <span>{currencyFormatter.format(data.realizedValue)}</span>
-              </div>
-              <MetricBar
-                value={
-                  data.plannedValue > 0
-                    ? (data.realizedValue / data.plannedValue) * 100
-                    : 0
-                }
-                className="bg-[#63c7bd]"
+          <CardContent className="flex flex-col gap-3">
+            {data.summaries.length === 0 ? (
+              <EmptyState
+                icon={TrendingUp}
+                title="Sem contratos para comparar"
+                description="Os contratos ativos aparecerão aqui com sua situação de ritmo."
               />
-            </div>
+            ) : (
+              data.summaries
+                .slice()
+                .sort((a, b) => a.progressGap - b.progressGap)
+                .slice(0, 5)
+                .map((summary) => (
+                  <div
+                    key={summary.contract.id}
+                    className="rounded-lg border bg-muted/20 p-3"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-medium">{summary.contract.name}</p>
+                      <Badge
+                        variant="outline"
+                        className={
+                          summary.progressGap < -DASHBOARD_TOLERANCE
+                            ? "border-red-200 bg-red-50 text-red-700"
+                            : summary.progressGap > DASHBOARD_TOLERANCE
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                              : "border-amber-200 bg-amber-50 text-amber-700"
+                        }
+                      >
+                        {summary.progressGap < -DASHBOARD_TOLERANCE
+                          ? "Atrasado"
+                          : summary.progressGap > DASHBOARD_TOLERANCE
+                            ? "Adiantado"
+                            : "No ritmo"}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Executado {numberFormatter.format(summary.percentExecuted)}% ·
+                      Esperado {numberFormatter.format(summary.expectedProgress)}%
+                    </p>
+                  </div>
+                ))
+            )}
           </CardContent>
         </Card>
       </section>

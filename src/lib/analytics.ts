@@ -5,7 +5,7 @@ import {
   type DailyExecution,
   type DailyExecutionItem,
 } from "@/lib/daily-executions"
-import { getFuelEntryTotal, type FuelEntry } from "@/lib/fuel"
+import type { OperationalRequest } from "@/lib/requests"
 
 export type PerformanceStatus = "green" | "yellow" | "red" | "no-goal"
 
@@ -27,24 +27,22 @@ export type ReportRow = {
   deviationReason: string
   status: PerformanceStatus
   reviewCompleted: boolean
+  workforcePlannedTotal: number
+  workforceActualTotal: number
+  workforceDifference: number
+  workforceSummary: string
+  closedAt?: string
 }
 
 export type ContractSummary = {
   contract: Contract
   plannedQuantity: number
   realizedQuantity: number
-  plannedValue: number
-  realizedValue: number
   percentExecuted: number
-  percentFinancial: number
   physicalBalance: number
-  financialBalance: number
+  expectedProgress: number
+  progressGap: number
 }
-
-export const currencyFormatter = new Intl.NumberFormat("pt-BR", {
-  style: "currency",
-  currency: "BRL",
-})
 
 export const numberFormatter = new Intl.NumberFormat("pt-BR", {
   maximumFractionDigits: 1,
@@ -113,10 +111,6 @@ export function getServiceRealizedQuantity(
   }, 0)
 }
 
-export function getServicePlannedValue(service: ContractService) {
-  return Number(service.contractValue) || 0
-}
-
 export function getServiceRealizedValue(
   contractId: string,
   service: ContractService,
@@ -128,26 +122,27 @@ export function getServiceRealizedValue(
   )
 }
 
-export function getServicePhysicalBalance(
-  contractId: string,
-  service: ContractService,
-  executions: DailyExecution[]
-) {
-  return (
-    (Number(service.totalQuantity) || 0) -
-    getServiceRealizedQuantity(contractId, service.id, executions)
-  )
-}
+function getExpectedProgress(contract: Contract) {
+  const startDate = new Date(contract.startDate)
+  const endDate = new Date(contract.expectedEndDate)
+  const referenceDate = new Date()
 
-export function getServiceFinancialBalance(
-  contractId: string,
-  service: ContractService,
-  executions: DailyExecution[]
-) {
-  return (
-    getServicePlannedValue(service) -
-    getServiceRealizedValue(contractId, service, executions)
-  )
+  if (
+    Number.isNaN(startDate.getTime()) ||
+    Number.isNaN(endDate.getTime()) ||
+    Number.isNaN(referenceDate.getTime())
+  ) {
+    return 0
+  }
+
+  if (endDate.getTime() <= startDate.getTime()) {
+    return referenceDate.getTime() >= endDate.getTime() ? 100 : 0
+  }
+
+  const totalDuration = endDate.getTime() - startDate.getTime()
+  const elapsed = referenceDate.getTime() - startDate.getTime()
+
+  return Math.max(0, Math.min((elapsed / totalDuration) * 100, 100))
 }
 
 export function buildContractSummaries(
@@ -163,43 +158,50 @@ export function buildContractSummaries(
           service.id,
           executions
         )
-        const plannedValue = getServicePlannedValue(service)
-        const realizedValue = getServiceRealizedValue(
-          contract.id,
-          service,
-          executions
-        )
 
         return {
           plannedQuantity: summary.plannedQuantity + plannedQuantity,
           realizedQuantity: summary.realizedQuantity + realizedQuantity,
-          plannedValue: summary.plannedValue + plannedValue,
-          realizedValue: summary.realizedValue + realizedValue,
         }
       },
       {
         plannedQuantity: 0,
         realizedQuantity: 0,
-        plannedValue: 0,
-        realizedValue: 0,
       }
     )
+
+    const percentExecuted =
+      totals.plannedQuantity > 0
+        ? (totals.realizedQuantity / totals.plannedQuantity) * 100
+        : 0
+    const expectedProgress = getExpectedProgress(contract)
 
     return {
       contract,
       ...totals,
-      percentExecuted:
-        totals.plannedQuantity > 0
-          ? (totals.realizedQuantity / totals.plannedQuantity) * 100
-          : 0,
-      percentFinancial:
-        totals.plannedValue > 0
-          ? (totals.realizedValue / totals.plannedValue) * 100
-          : 0,
+      percentExecuted,
       physicalBalance: totals.plannedQuantity - totals.realizedQuantity,
-      financialBalance: totals.plannedValue - totals.realizedValue,
+      expectedProgress,
+      progressGap: percentExecuted - expectedProgress,
     }
   })
+}
+
+function getExecutionWorkforceTotals(execution: DailyExecution) {
+  const plannedTotal = execution.workforceActual.reduce(
+    (total, item) => total + (Number(item.plannedCount) || 0),
+    0
+  )
+  const actualTotal = execution.workforceActual.reduce(
+    (total, item) => total + (Number(item.actualCount) || 0),
+    0
+  )
+
+  return {
+    plannedTotal,
+    actualTotal,
+    difference: actualTotal - plannedTotal,
+  }
 }
 
 export function buildReportRows(
@@ -208,6 +210,7 @@ export function buildReportRows(
 ): ReportRow[] {
   return executions.flatMap((execution) => {
     const contract = contracts.find((item) => item.id === execution.contractId)
+    const workforceTotals = getExecutionWorkforceTotals(execution)
 
     return execution.items.map((item: DailyExecutionItem) => {
       const service = contract?.services.find(
@@ -238,39 +241,55 @@ export function buildReportRows(
           : "",
         status,
         reviewCompleted: Boolean(item.reviewCompleted),
+        workforcePlannedTotal: workforceTotals.plannedTotal,
+        workforceActualTotal: workforceTotals.actualTotal,
+        workforceDifference: workforceTotals.difference,
+        workforceSummary: `${workforceTotals.actualTotal}/${workforceTotals.plannedTotal}`,
+        closedAt: execution.closedAt,
       }
     })
   })
 }
 
-export function getFuelTotals(entries: FuelEntry[]) {
-  return entries.reduce(
-    (summary, entry) => {
-      const liters = Number(entry.liters) || 0
-      const value = getFuelEntryTotal(entry)
+function compareExecutionsByRecency(a: DailyExecution, b: DailyExecution) {
+  if (a.date !== b.date) {
+    return b.date.localeCompare(a.date)
+  }
 
-      return {
-        liters: summary.liters + liters,
-        totalValue: summary.totalValue + value,
-        gasolineLiters:
-          summary.gasolineLiters + (entry.fuelType === "gasolina" ? liters : 0),
-        dieselLiters:
-          summary.dieselLiters + (entry.fuelType === "diesel" ? liters : 0),
-        gasolineValue:
-          summary.gasolineValue + (entry.fuelType === "gasolina" ? value : 0),
-        dieselValue:
-          summary.dieselValue + (entry.fuelType === "diesel" ? value : 0),
-      }
-    },
-    {
-      liters: 0,
-      totalValue: 0,
-      gasolineLiters: 0,
-      dieselLiters: 0,
-      gasolineValue: 0,
-      dieselValue: 0,
-    }
+  return b.updatedAt.localeCompare(a.updatedAt)
+}
+
+export function getLatestExecutionForContract(
+  contractId: string,
+  executions: DailyExecution[]
+) {
+  return executions
+    .filter((execution) => execution.contractId === contractId)
+    .sort(compareExecutionsByRecency)[0]
+}
+
+export function hasExecutionBelowGoal(
+  execution: DailyExecution,
+  contract?: Contract
+) {
+  return execution.items.some((item) => {
+    const goal =
+      Number(
+        contract?.services.find((service) => service.id === item.serviceId)?.dailyGoal
+      ) || 0
+
+    return goal > 0 && (Number(item.realizedDaily) || 0) < goal
+  })
+}
+
+export function hasWorkforceDivergence(execution: DailyExecution) {
+  return execution.workforceActual.some(
+    (item) => (Number(item.actualCount) || 0) !== (Number(item.plannedCount) || 0)
   )
+}
+
+export function countPendingRequests(requests: OperationalRequest[]) {
+  return requests.filter((request) => request.status === "pendente").length
 }
 
 export function isWithinPeriod(date: string, startDate: string, endDate: string) {
