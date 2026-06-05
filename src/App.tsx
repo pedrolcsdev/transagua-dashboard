@@ -11,10 +11,13 @@ import {
 import { AppShell } from "@/layout/AppShell"
 import { navigationByProfile } from "@/lib/navigation"
 import {
-  DEFAULT_PROFILE,
+  DEFAULT_USER_ID,
+  getStoredUser,
   getStoredProfile,
   PROFILE_STORAGE_KEY,
-  type UserProfile,
+  USER_STORAGE_KEY,
+  getUsersByProfile,
+  type AppUser,
 } from "@/lib/profile"
 import { Contratos } from "@/pages/Contratos"
 import { Dashboard } from "@/pages/Dashboard"
@@ -25,9 +28,10 @@ import { Solicitacoes } from "@/pages/Solicitacoes"
 import { Usuarios } from "@/pages/Usuarios"
 
 function ShellRoutes() {
-  const [profile, setProfile] = useState<UserProfile>(() => getStoredProfile())
+  const [user, setUser] = useState<AppUser>(() => getStoredUser())
   const navigate = useNavigate()
   const location = useLocation()
+  const profile = user.profile
 
   const allowedPaths = useMemo(
     () => navigationByProfile[profile].map((item) => item.path),
@@ -35,8 +39,9 @@ function ShellRoutes() {
   )
 
   useEffect(() => {
-    localStorage.setItem(PROFILE_STORAGE_KEY, profile)
-  }, [profile])
+    localStorage.setItem(USER_STORAGE_KEY, user.id)
+    localStorage.setItem(PROFILE_STORAGE_KEY, user.profile)
+  }, [user])
 
   useEffect(() => {
     if (!allowedPaths.includes(location.pathname)) {
@@ -47,7 +52,7 @@ function ShellRoutes() {
   return (
     <Routes>
       <Route
-        element={<AppShell profile={profile} onProfileChange={setProfile} />}
+        element={<AppShell user={user} profile={profile} onUserChange={setUser} />}
       >
         <Route
           index
@@ -58,16 +63,31 @@ function ShellRoutes() {
             />
           }
         />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/contratos" element={<Contratos profile={profile} />} />
-        <Route path="/solicitacoes" element={<Solicitacoes profile={profile} />} />
+        <Route
+          path="/dashboard"
+          element={<Dashboard key={user.id} currentUser={user} />}
+        />
+        <Route
+          path="/contratos"
+          element={<Contratos key={user.id} currentUser={user} />}
+        />
+        <Route
+          path="/solicitacoes"
+          element={<Solicitacoes key={user.id} currentUser={user} />}
+        />
         <Route path="/abastecimento" element={<Navigate to="/solicitacoes" replace />} />
         <Route
           path="/lancamento-diario"
-          element={<LancamentoDiario profile={profile} />}
+          element={<LancamentoDiario key={user.id} currentUser={user} />}
         />
-        <Route path="/revisao" element={<Revisao profile={profile} />} />
-        <Route path="/relatorios" element={<Relatorios />} />
+        <Route
+          path="/revisao"
+          element={<Revisao key={user.id} currentUser={user} />}
+        />
+        <Route
+          path="/relatorios"
+          element={<Relatorios key={user.id} currentUser={user} />}
+        />
         <Route path="/usuarios" element={<Usuarios />} />
         <Route
           path="*"
@@ -85,8 +105,10 @@ function ShellRoutes() {
 
 function App() {
   useEffect(() => {
-    if (!localStorage.getItem(PROFILE_STORAGE_KEY)) {
-      localStorage.setItem(PROFILE_STORAGE_KEY, DEFAULT_PROFILE)
+    if (!localStorage.getItem(USER_STORAGE_KEY)) {
+      const legacyProfile = getStoredProfile()
+      const defaultUser = getUsersByProfile(legacyProfile)[0]
+      localStorage.setItem(USER_STORAGE_KEY, defaultUser?.id ?? DEFAULT_USER_ID)
     }
   }, [])
 

@@ -10,19 +10,19 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
+  appUsers,
   getProfileLabel,
-  profileOptions,
-  type UserProfile,
+  type AppUser,
 } from "@/lib/profile"
 
 type ProfileSelectorProps = {
-  profile: UserProfile
-  onProfileChange: (profile: UserProfile) => void
+  user: AppUser
+  onUserChange: (user: AppUser) => void
 }
 
 export function ProfileSelector({
-  profile,
-  onProfileChange,
+  user,
+  onUserChange,
 }: ProfileSelectorProps) {
   return (
     <DropdownMenu>
@@ -35,20 +35,27 @@ export function ProfileSelector({
           />
         }
       >
-        <span className="hidden text-sm text-[#6a8284] sm:inline">Perfil</span>
-        <span className="text-sm font-semibold">{getProfileLabel(profile)}</span>
+        <span className="hidden text-sm text-[#6a8284] sm:inline">
+          {getProfileLabel(user.profile)}
+        </span>
+        <span className="text-sm font-semibold">{user.name}</span>
         <ChevronDown data-icon="inline-end" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">
         <DropdownMenuGroup>
-          <DropdownMenuLabel>Selecionar perfil</DropdownMenuLabel>
-          {profileOptions.map((option) => (
+          <DropdownMenuLabel>Selecionar usuário</DropdownMenuLabel>
+          {appUsers.map((option) => (
             <DropdownMenuItem
-              key={option.value}
-              onClick={() => onProfileChange(option.value)}
+              key={option.id}
+              onClick={() => onUserChange(option)}
             >
-              <span>{option.label}</span>
-              {profile === option.value && <Check className="ml-auto" />}
+              <span className="flex flex-col">
+                <span>{option.name}</span>
+                <span className="text-xs text-muted-foreground">
+                  {getProfileLabel(option.profile)}
+                </span>
+              </span>
+              {user.id === option.id && <Check className="ml-auto" />}
             </DropdownMenuItem>
           ))}
         </DropdownMenuGroup>

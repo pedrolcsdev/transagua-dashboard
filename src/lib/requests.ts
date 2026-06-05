@@ -1,5 +1,5 @@
 import { createId } from "@/lib/contracts"
-import type { UserProfile } from "@/lib/profile"
+import type { AppUser, UserProfile } from "@/lib/profile"
 
 export type RequestStatus = "pendente" | "em-atendimento" | "atendido"
 
@@ -10,6 +10,7 @@ export type RequestHistoryEntry = {
   toStatus: RequestStatus
   note: string
   changedByProfile: UserProfile
+  changedByUserId?: string
   changedAt: string
 }
 
@@ -21,6 +22,7 @@ export type OperationalRequest = {
   date: string
   status: RequestStatus
   createdByProfile: UserProfile
+  createdByUserId?: string
   history: RequestHistoryEntry[]
   createdAt: string
   updatedAt: string
@@ -88,6 +90,10 @@ export function loadOperationalRequests(): OperationalRequest[] {
         request.createdByProfile === "leader"
           ? request.createdByProfile
           : "leader",
+      createdByUserId:
+        typeof request.createdByUserId === "string"
+          ? request.createdByUserId
+          : undefined,
       history: history.map((entry) => {
             const historyRecord = entry as Record<string, unknown>
 
@@ -120,6 +126,10 @@ export function loadOperationalRequests(): OperationalRequest[] {
               historyRecord.changedByProfile === "leader"
                 ? historyRecord.changedByProfile
                 : "leader",
+            changedByUserId:
+              typeof historyRecord.changedByUserId === "string"
+                ? historyRecord.changedByUserId
+                : undefined,
             changedAt:
               typeof historyRecord.changedAt === "string"
                 ? historyRecord.changedAt
@@ -141,7 +151,7 @@ export function saveOperationalRequests(requests: OperationalRequest[]) {
 
 export function createOperationalRequest(
   formData: OperationalRequestFormData,
-  profile: UserProfile
+  currentUser: AppUser
 ): OperationalRequest {
   const now = new Date().toISOString()
 
@@ -152,14 +162,16 @@ export function createOperationalRequest(
     contractId: formData.contractId,
     date: formData.date,
     status: "pendente",
-    createdByProfile: profile,
+    createdByProfile: currentUser.profile,
+    createdByUserId: currentUser.id,
     history: [
       {
         id: createId(),
         action: "Solicitação criada",
         toStatus: "pendente",
         note: "",
-        changedByProfile: profile,
+        changedByProfile: currentUser.profile,
+        changedByUserId: currentUser.id,
         changedAt: now,
       },
     ],

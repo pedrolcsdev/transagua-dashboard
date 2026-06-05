@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react"
-import { ClipboardList, PackageOpen, Save } from "lucide-react"
+import { ClipboardList, Edit3, PackageOpen, Save, X } from "lucide-react"
 
 import { MetricCard } from "@/components/MetricCard"
 import { PageHeader } from "@/components/PageHeader"
@@ -24,9 +24,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { createId, loadContracts } from "@/lib/contracts"
+import { createId, getContractsForUser, loadContracts } from "@/lib/contracts"
 import { hasCapability } from "@/lib/permissions"
-import type { UserProfile } from "@/lib/profile"
+import { getProfileLabel, getUserById, type AppUser } from "@/lib/profile"
 import {
   createEmptyOperationalRequestForm,
   createOperationalRequest,
@@ -49,37 +49,63 @@ const statusLabelByValue = Object.fromEntries(
 ) as Record<RequestStatus, string>
 
 type SolicitacoesProps = {
-  profile: UserProfile
+  currentUser: AppUser
 }
 
-export function Solicitacoes({ profile }: SolicitacoesProps) {
+export function Solicitacoes({ currentUser }: SolicitacoesProps) {
   const [contracts] = useState(() => loadContracts())
   const [requests, setRequests] = useState<OperationalRequest[]>(() =>
     loadOperationalRequests()
   )
-  const firstContractId = contracts[0]?.id ?? ""
+  const profile = currentUser.profile
+  const visibleContracts = useMemo(
+    () => getContractsForUser(contracts, currentUser),
+    [contracts, currentUser]
+  )
+  const visibleContractIds = useMemo(
+    () => new Set(visibleContracts.map((contract) => contract.id)),
+    [visibleContracts]
+  )
+  const visibleRequests = useMemo(
+    () =>
+      requests.filter((request) => visibleContractIds.has(request.contractId)),
+    [requests, visibleContractIds]
+  )
+  const firstContractId = visibleContracts[0]?.id ?? ""
   const [formData, setFormData] = useState<OperationalRequestFormData>(() =>
     createEmptyOperationalRequestForm(firstContractId)
   )
+  const [editFormData, setEditFormData] =
+    useState<OperationalRequestFormData>(() =>
+      createEmptyOperationalRequestForm(firstContractId)
+    )
+  const [editingRequestId, setEditingRequestId] = useState<string | null>(null)
+  const [editNote, setEditNote] = useState("")
+  const [editError, setEditError] = useState("")
   const [statusDrafts, setStatusDrafts] = useState<Record<string, RequestStatus>>({})
   const [statusNotes, setStatusNotes] = useState<Record<string, string>>({})
   const [feedback, setFeedback] = useState("")
 
   const canCreateRequests = hasCapability(profile, "requests.create")
+  const canEditRequests = hasCapability(profile, "requests.edit")
   const canUpdateStatus = hasCapability(profile, "requests.update-status")
+  const editingRequest = requests.find((request) => request.id === editingRequestId)
 
   const pendingCount = useMemo(
-    () => requests.filter((request) => request.status === "pendente").length,
-    [requests]
+    () =>
+      visibleRequests.filter((request) => request.status === "pendente").length,
+    [visibleRequests]
   )
   const inProgressCount = useMemo(
     () =>
-      requests.filter((request) => request.status === "em-atendimento").length,
-    [requests]
+      visibleRequests.filter((request) => request.status === "em-atendimento")
+        .length,
+    [visibleRequests]
   )
   const attendedCount = useMemo(
-    () => requests.filter((request) => request.status === "atendido").length,
-    [requests]
+    () =>
+      visibleRequests.filter((request) => request.status === "atendido").length,
+    [visibleRequests]
   )
 
   useEffect(() => {
@@ -96,6 +122,17 @@ export function Solicitacoes({ profile }: SolicitacoesProps) {
     }))
   }
 
+  function updateEditField<K extends keyof OperationalRequestFormData>(
+    field: K,
+    value: OperationalRequestFormData[K]
+  ) {
+    setEditFormData((currentFormData) => ({
+      ...currentFormData,
+      [field]: value,
+    }))
+    setEditError("")
+  }
+
   function submitRequest(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
@@ -103,11 +140,81 @@ export function Solicitacoes({ profile }: SolicitacoesProps) {
       return
     }
 
-    const nextRequest = createOperationalRequest(formData, profile)
+    const nextRequest = createOperationalRequest(formData, currentUser)
 
     setRequests((currentRequests) => [nextRequest, ...currentRequests])
     setFormData(createEmptyOperationalRequestForm(formData.contractId))
     setFeedback("Solicitação criada com sucesso.")
+  }
+
+  function startEditingRequest(request: OperationalRequest) {
+    if (!canEditRequests) {
+      return
+    }
+
+    setEditingRequestId(request.id)
+    setEditFormData({
+      title: request.title,
+      description: request.description,
+      contractId: request.contractId,
+      date: request.date,
+    })
+    setEditNote("")
+    setEditError("")
+    setFeedback("")
+  }
+
+  function cancelEditingRequest() {
+    setEditingRequestId(null)
+    setEditFormData(createEmptyOperationalRequestForm(firstContractId))
+    setEditNote("")
+    setEditError("")
+  }
+
+  function submitRequestEdit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    if (!canEditRequests || !editingRequest) {
+      return
+    }
+
+    const normalizedNote = editNote.trim()
+
+    if (normalizedNote.length === 0) {
+      setEditError("Informe a observação da edição antes de salvar.")
+      return
+    }
+
+    const now = new Date().toISOString()
+
+    setRequests((currentRequests) =>
+      currentRequests.map((request) =>
+        request.id === editingRequest.id
+          ? {
+              ...request,
+              title: editFormData.title.trim(),
+              description: editFormData.description.trim(),
+              contractId: editFormData.contractId,
+              date: editFormData.date,
+              updatedAt: now,
+              history: [
+                ...request.history,
+                {
+                  id: createId(),
+                  action: "Solicitação editada",
+                  toStatus: request.status,
+                  note: normalizedNote,
+                  changedByProfile: profile,
+                  changedByUserId: currentUser.id,
+                  changedAt: now,
+                },
+              ],
+            }
+          : request
+      )
+    )
+    cancelEditingRequest()
+    setFeedback("Solicitação editada com histórico.")
   }
 
   function updateRequestStatus(requestId: string) {
@@ -140,6 +247,7 @@ export function Solicitacoes({ profile }: SolicitacoesProps) {
                   toStatus: nextStatus,
                   note: (statusNotes[requestId] ?? "").trim(),
                   changedByProfile: profile,
+                  changedByUserId: currentUser.id,
                   changedAt: now,
                 },
               ],
@@ -187,7 +295,7 @@ export function Solicitacoes({ profile }: SolicitacoesProps) {
         <MetricCard
           title="Total"
           description="Registros persistidos"
-          value={requests.length}
+          value={visibleRequests.length}
           icon={ClipboardList}
         />
       </section>
@@ -203,7 +311,9 @@ export function Solicitacoes({ profile }: SolicitacoesProps) {
                 ? "O Líder registra a necessidade da obra."
                 : canUpdateStatus
                   ? "A Logística acompanha solicitações e atualiza status."
-                  : "Diretor e Gestor acompanham o fluxo em modo leitura."}
+                  : canEditRequests
+                    ? "O Gestor corrige solicitações com histórico auditável."
+                    : "Coordenador e Gestor acompanham o fluxo conforme suas obras."}
             </CardDescription>
           </CardHeader>
 
@@ -236,7 +346,7 @@ export function Solicitacoes({ profile }: SolicitacoesProps) {
                       <option value="" disabled>
                         Selecione
                       </option>
-                      {contracts.map((contract) => (
+                      {visibleContracts.map((contract) => (
                         <option key={contract.id} value={contract.id}>
                           {contract.name} - {contract.client}
                         </option>
@@ -277,9 +387,116 @@ export function Solicitacoes({ profile }: SolicitacoesProps) {
                 )}
               </CardContent>
               <CardFooter className="justify-end">
-                <Button type="submit" disabled={contracts.length === 0}>
+                <Button type="submit" disabled={visibleContracts.length === 0}>
                   <Save data-icon="inline-start" />
                   Salvar solicitação
+                </Button>
+              </CardFooter>
+            </form>
+          ) : canEditRequests && editingRequest ? (
+            <form onSubmit={submitRequestEdit}>
+              <CardContent className="flex flex-col gap-4">
+                <FieldGroup>
+                  <Field>
+                    <FieldLabel htmlFor="edit-request-title">Título</FieldLabel>
+                    <Input
+                      id="edit-request-title"
+                      value={editFormData.title}
+                      onChange={(event) =>
+                        updateEditField("title", event.target.value)
+                      }
+                      required
+                    />
+                  </Field>
+
+                  <Field>
+                    <FieldLabel htmlFor="edit-request-contract">Contrato</FieldLabel>
+                    <select
+                      id="edit-request-contract"
+                      className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                      value={editFormData.contractId}
+                      onChange={(event) =>
+                        updateEditField("contractId", event.target.value)
+                      }
+                      required
+                    >
+                      {visibleContracts.map((contract) => (
+                        <option key={contract.id} value={contract.id}>
+                          {contract.name} - {contract.client}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+
+                  <Field>
+                    <FieldLabel htmlFor="edit-request-date">Data</FieldLabel>
+                    <Input
+                      id="edit-request-date"
+                      type="date"
+                      value={editFormData.date}
+                      onChange={(event) =>
+                        updateEditField("date", event.target.value)
+                      }
+                      required
+                    />
+                  </Field>
+
+                  <Field>
+                    <FieldLabel htmlFor="edit-request-description">
+                      Descrição
+                    </FieldLabel>
+                    <textarea
+                      id="edit-request-description"
+                      className="min-h-24 w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                      value={editFormData.description}
+                      onChange={(event) =>
+                        updateEditField("description", event.target.value)
+                      }
+                      required
+                    />
+                  </Field>
+
+                  <Field>
+                    <FieldLabel htmlFor="edit-request-note">
+                      Observação da edição
+                    </FieldLabel>
+                    <textarea
+                      id="edit-request-note"
+                      className="min-h-20 w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                      value={editNote}
+                      onChange={(event) => {
+                        setEditNote(event.target.value)
+                        setEditError("")
+                      }}
+                      placeholder="Ex.: adicionado cimento porque não foi solicitado pelo Líder"
+                    />
+                  </Field>
+                </FieldGroup>
+
+                {editError && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    {editError}
+                  </div>
+                )}
+
+                {feedback && (
+                  <div className="rounded-lg border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                    {feedback}
+                  </div>
+                )}
+              </CardContent>
+              <CardFooter className="justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={cancelEditingRequest}
+                >
+                  <X data-icon="inline-start" />
+                  Cancelar
+                </Button>
+                <Button type="submit">
+                  <Save data-icon="inline-start" />
+                  Salvar edição
                 </Button>
               </CardFooter>
             </form>
@@ -288,7 +505,9 @@ export function Solicitacoes({ profile }: SolicitacoesProps) {
               <div className="rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
                 {canUpdateStatus
                   ? "Atualize o andamento das solicitações recebidas e mantenha o histórico sempre rastreável."
-                  : "Use esta área para acompanhar solicitações abertas, em atendimento e concluídas."}
+                  : canEditRequests
+                    ? "Use o ícone de edição na lista para corrigir solicitações e registrar o motivo."
+                    : "Use esta área para acompanhar solicitações abertas, em atendimento e concluídas."}
               </div>
 
               {feedback && (
@@ -308,7 +527,7 @@ export function Solicitacoes({ profile }: SolicitacoesProps) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {requests.length === 0 ? (
+            {visibleRequests.length === 0 ? (
               <EmptyState
                 icon={PackageOpen}
                 title="Nenhuma solicitação registrada"
@@ -327,7 +546,7 @@ export function Solicitacoes({ profile }: SolicitacoesProps) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {requests.map((request) => (
+                  {visibleRequests.map((request) => (
                     <TableRow key={request.id}>
                       <TableCell className="align-top">
                         <div className="flex flex-col">
@@ -364,13 +583,30 @@ export function Solicitacoes({ profile }: SolicitacoesProps) {
                                 {statusLabelByValue[entry.toStatus]}
                               </p>
                               {entry.note && <p>Nota: {entry.note}</p>}
+                              <p>
+                                {getUserById(entry.changedByUserId ?? "")?.name ??
+                                  getProfileLabel(entry.changedByProfile)}
+                              </p>
                             </div>
                           ))}
                         </div>
                       </TableCell>
                       <TableCell className="align-top">
-                        {canUpdateStatus ? (
-                          <div className="flex min-w-72 flex-col gap-2">
+                        <div className="flex min-w-72 flex-col gap-2">
+                          {canEditRequests && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => startEditingRequest(request)}
+                            >
+                              <Edit3 data-icon="inline-start" />
+                              Editar
+                            </Button>
+                          )}
+
+                          {canUpdateStatus ? (
+                            <>
                             <select
                               className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                               value={statusDrafts[request.id] ?? request.status}
@@ -405,12 +641,13 @@ export function Solicitacoes({ profile }: SolicitacoesProps) {
                             >
                               Atualizar status
                             </Button>
-                          </div>
-                        ) : (
-                          <div className="text-right text-sm text-muted-foreground">
+                            </>
+                          ) : !canEditRequests ? (
+                            <div className="text-right text-sm text-muted-foreground">
                             Somente leitura
-                          </div>
-                        )}
+                            </div>
+                          ) : null}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}

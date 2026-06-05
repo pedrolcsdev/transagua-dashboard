@@ -31,8 +31,9 @@ import {
   numberFormatter,
   type PerformanceStatus,
 } from "@/lib/analytics"
-import { loadContracts } from "@/lib/contracts"
+import { getContractsForUser, loadContracts } from "@/lib/contracts"
 import { loadDailyExecutions } from "@/lib/daily-executions"
+import type { AppUser } from "@/lib/profile"
 
 const statusOptions: Array<{
   value: PerformanceStatus | "all" | "reviewed" | "pending-review"
@@ -46,9 +47,16 @@ const statusOptions: Array<{
   { value: "pending-review", label: "Pendentes de revisão" },
 ]
 
-function getReportData() {
-  const contracts = loadContracts()
-  const executions = loadDailyExecutions()
+type RelatoriosProps = {
+  currentUser: AppUser
+}
+
+function getReportData(currentUser: AppUser) {
+  const contracts = getContractsForUser(loadContracts(), currentUser)
+  const allowedContractIds = new Set(contracts.map((contract) => contract.id))
+  const executions = loadDailyExecutions().filter((execution) =>
+    allowedContractIds.has(execution.contractId)
+  )
 
   return {
     contracts,
@@ -56,8 +64,8 @@ function getReportData() {
   }
 }
 
-export function Relatorios() {
-  const [data] = useState(() => getReportData())
+export function Relatorios({ currentUser }: RelatoriosProps) {
+  const data = useMemo(() => getReportData(currentUser), [currentUser])
   const [contractId, setContractId] = useState("all")
   const [serviceId, setServiceId] = useState("all")
   const [startDate, setStartDate] = useState("")

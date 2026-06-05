@@ -13,7 +13,12 @@ import {
 } from "@/components/ui/card"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { loadContracts, saveContracts, type Contract } from "@/lib/contracts"
+import {
+  getContractsForUser,
+  loadContracts,
+  saveContracts,
+  type Contract,
+} from "@/lib/contracts"
 import {
   DAILY_EXECUTIONS_STORAGE_KEY,
   buildExecutionItems,
@@ -32,14 +37,16 @@ import {
 } from "@/lib/daily-executions"
 import { createId } from "@/lib/contracts"
 import { hasCapability } from "@/lib/permissions"
-import type { UserProfile } from "@/lib/profile"
+import type { AppUser } from "@/lib/profile"
 
-function getInitialExecutionState() {
+function getInitialExecutionState(currentUser: AppUser) {
   const contracts = loadContracts()
+  const availableContracts = getContractsForUser(contracts, currentUser)
   const executions = loadDailyExecutions()
   const date = getTodayInputValue()
   const selectedContractId =
-    contracts.find((contract) => contract.status !== "encerrado")?.id ?? ""
+    availableContracts.find((contract) => contract.status !== "encerrado")?.id ??
+    ""
   const selectedContract = contracts.find(
     (contract) => contract.id === selectedContractId
   )
@@ -63,15 +70,15 @@ function getInitialExecutionState() {
 }
 
 type LancamentoDiarioProps = {
-  profile: UserProfile
+  currentUser: AppUser
 }
 
 function getNumberInputValue(value: number) {
   return value === 0 ? "" : String(value)
 }
 
-export function LancamentoDiario({ profile }: LancamentoDiarioProps) {
-  const [initialState] = useState(() => getInitialExecutionState())
+export function LancamentoDiario({ currentUser }: LancamentoDiarioProps) {
+  const [initialState] = useState(() => getInitialExecutionState(currentUser))
   const [contracts, setContracts] = useState<Contract[]>(
     () => initialState.contracts
   )
@@ -93,10 +100,14 @@ export function LancamentoDiario({ profile }: LancamentoDiarioProps) {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [feedback, setFeedback] = useState("")
 
+  const profile = currentUser.profile
   const canManageExecution = hasCapability(profile, "daily-execution.manage")
   const availableContracts = useMemo(
-    () => contracts.filter((contract) => contract.status !== "encerrado"),
-    [contracts]
+    () =>
+      getContractsForUser(contracts, currentUser).filter(
+        (contract) => contract.status !== "encerrado"
+      ),
+    [contracts, currentUser]
   )
 
   const selectedContract = useMemo(

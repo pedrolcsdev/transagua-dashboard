@@ -9,14 +9,15 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { getPageTitle } from "@/lib/navigation"
-import type { UserProfile } from "@/lib/profile"
+import type { AppUser, UserProfile } from "@/lib/profile"
 
 type AppShellProps = {
+  user: AppUser
   profile: UserProfile
-  onProfileChange: (profile: UserProfile) => void
+  onUserChange: (user: AppUser) => void
 }
 
-export function AppShell({ profile, onProfileChange }: AppShellProps) {
+export function AppShell({ user, profile, onUserChange }: AppShellProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const location = useLocation()
   const pageTitle = getPageTitle(location.pathname)
@@ -44,9 +45,9 @@ export function AppShell({ profile, onProfileChange }: AppShellProps) {
         <div className="flex min-w-0 flex-1 flex-col">
           <Header
             pageTitle={pageTitle}
-            profile={profile}
+            user={user}
             onMenuClick={() => setMobileMenuOpen(true)}
-            onProfileChange={onProfileChange}
+            onUserChange={onUserChange}
           />
 
           <main className="flex-1 p-4 sm:p-6 lg:p-8">

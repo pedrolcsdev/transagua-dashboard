@@ -14,6 +14,7 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import {
   createId,
+  getContractsForUser,
   loadContracts,
   saveContracts,
   type Contract,
@@ -26,7 +27,7 @@ import {
   type DailyExecutionItem,
 } from "@/lib/daily-executions"
 import { hasCapability } from "@/lib/permissions"
-import type { UserProfile } from "@/lib/profile"
+import type { AppUser } from "@/lib/profile"
 import { cn } from "@/lib/utils"
 
 type ReviewRow = {
@@ -75,15 +76,17 @@ function getPerformanceStatus(realized: number, goal: number) {
 }
 
 type RevisaoProps = {
-  profile: UserProfile
+  currentUser: AppUser
 }
 
 function getNumberInputValue(value: number) {
   return value === 0 ? "" : String(value)
 }
 
-export function Revisao({ profile }: RevisaoProps) {
-  const [contracts, setContracts] = useState<Contract[]>(() => loadContracts())
+export function Revisao({ currentUser }: RevisaoProps) {
+  const [contracts, setContracts] = useState<Contract[]>(() =>
+    loadContracts()
+  )
   const [executions, setExecutions] = useState<DailyExecution[]>(() =>
     loadDailyExecutions()
   )
@@ -97,22 +100,35 @@ export function Revisao({ profile }: RevisaoProps) {
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({})
   const [feedback, setFeedback] = useState("")
 
+  const profile = currentUser.profile
   const canManageReview = hasCapability(profile, "review.manage")
+  const visibleContracts = useMemo(
+    () => getContractsForUser(contracts, currentUser),
+    [contracts, currentUser]
+  )
+  const visibleContractIds = useMemo(
+    () => new Set(visibleContracts.map((contract) => contract.id)),
+    [visibleContracts]
+  )
   const reviewRows = useMemo<ReviewRow[]>(
     () =>
-      executions.flatMap((execution) => {
-        const contract = contracts.find((item) => item.id === execution.contractId)
+      executions
+        .filter((execution) => visibleContractIds.has(execution.contractId))
+        .flatMap((execution) => {
+          const contract = visibleContracts.find(
+            (item) => item.id === execution.contractId
+          )
 
-        return execution.items.map((item) => ({
-          execution,
-          item,
-          contract,
-          service: contract?.services.find(
-            (service) => service.id === item.serviceId
-          ),
-        }))
-      }),
-    [contracts, executions]
+          return execution.items.map((item) => ({
+            execution,
+            item,
+            contract,
+            service: contract?.services.find(
+              (service) => service.id === item.serviceId
+            ),
+          }))
+        }),
+    [executions, visibleContractIds, visibleContracts]
   )
 
   const completedReviews = useMemo(

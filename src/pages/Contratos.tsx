@@ -30,9 +30,10 @@ import {
   createEmptyPlannedWorkforceRole,
   createEmptyService,
   createId,
+  getContractsForUser,
   getDeadlineUnitLabel,
   getPlannedWorkforceTotal,
-  getServiceUnitValue,
+  getServiceContractValue,
   loadContracts,
   saveContracts,
   serviceUnitOptions,
@@ -44,7 +45,7 @@ import {
   type PlannedWorkforceRole,
 } from "@/lib/contracts"
 import { hasCapability } from "@/lib/permissions"
-import type { UserProfile } from "@/lib/profile"
+import { getUserById, getUsersByProfile, type AppUser } from "@/lib/profile"
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
   style: "currency",
@@ -56,14 +57,14 @@ const statusLabelByValue = Object.fromEntries(
 ) as Record<ContractStatus, string>
 
 type ContratosProps = {
-  profile: UserProfile
+  currentUser: AppUser
 }
 
 function getNumberInputValue(value: number) {
   return value === 0 ? "" : String(value)
 }
 
-export function Contratos({ profile }: ContratosProps) {
+export function Contratos({ currentUser }: ContratosProps) {
   const [contracts, setContracts] = useState<Contract[]>(() => loadContracts())
   const [formData, setFormData] = useState<ContractFormData>(() =>
     createEmptyContractForm()
@@ -73,20 +74,30 @@ export function Contratos({ profile }: ContratosProps) {
   )
   const [feedback, setFeedback] = useState("")
 
+  const profile = currentUser.profile
   const canManageContracts = hasCapability(profile, "contracts.manage")
   const isEditing = Boolean(editingContractId)
+  const visibleContracts = useMemo(
+    () => getContractsForUser(contracts, currentUser),
+    [contracts, currentUser]
+  )
+  const managerOptions = getUsersByProfile("manager")
+  const leaderOptions = getUsersByProfile("leader")
   const totalServices = useMemo(
     () =>
-      contracts.reduce((total, contract) => total + contract.services.length, 0),
-    [contracts]
+      visibleContracts.reduce(
+        (total, contract) => total + contract.services.length,
+        0
+      ),
+    [visibleContracts]
   )
   const totalPlannedWorkforce = useMemo(
     () =>
-      contracts.reduce(
+      visibleContracts.reduce(
         (total, contract) => total + getPlannedWorkforceTotal(contract.plannedWorkforce),
         0
       ),
-    [contracts]
+    [visibleContracts]
   )
 
   useEffect(() => {
@@ -182,6 +193,8 @@ export function Contratos({ profile }: ContratosProps) {
       expectedEndDate: contract.expectedEndDate,
       status: contract.status,
       team: contract.team,
+      managerId: contract.managerId,
+      leaderId: contract.leaderId,
       employeeCount: contract.employeeCount,
       plannedWorkforce: contract.plannedWorkforce.length
         ? contract.plannedWorkforce
@@ -249,6 +262,8 @@ export function Contratos({ profile }: ContratosProps) {
       workingDaysDeadline: Number(formData.workingDaysDeadline) || 0,
       deadlineUnit: formData.deadlineUnit,
       team: formData.team.trim(),
+      managerId: formData.managerId,
+      leaderId: formData.leaderId,
       employeeCount,
       plannedWorkforce: normalizedWorkforce,
       observations: formData.observations.trim(),
@@ -259,7 +274,8 @@ export function Contratos({ profile }: ContratosProps) {
         description: service.description.trim(),
         unit: service.unit.trim(),
         totalQuantity: Number(service.totalQuantity),
-        contractValue: Number(service.contractValue),
+        unitValue: Number(service.unitValue),
+        contractValue: getServiceContractValue(service),
         monthlyGoal: Number(service.monthlyGoal),
         dailyGoal: Number(service.dailyGoal),
         completedQuantity: Number(service.completedQuantity),
@@ -303,8 +319,8 @@ export function Contratos({ profile }: ContratosProps) {
           </p>
           <h2 className="text-2xl font-semibold text-[#102f31]">Contratos</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-            O Diretor define prazo, metas, equipe e efetivo planejado por função.
-            O Gestor acompanha a carteira em modo leitura.
+            O Coordenador define prazo, metas, equipe, Gestor e Líder
+            responsáveis. Cada perfil acompanha apenas as obras atribuídas.
           </p>
         </div>
 
@@ -312,7 +328,7 @@ export function Contratos({ profile }: ContratosProps) {
           <Card size="sm" className="rounded-lg">
             <CardContent className="px-4">
               <p className="text-xs text-muted-foreground">Contratos</p>
-              <p className="text-xl font-semibold">{contracts.length}</p>
+              <p className="text-xl font-semibold">{visibleContracts.length}</p>
             </CardContent>
           </Card>
           <Card size="sm" className="rounded-lg">
@@ -339,15 +355,17 @@ export function Contratos({ profile }: ContratosProps) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {contracts.length === 0 ? (
+            {visibleContracts.length === 0 ? (
               <div className="flex min-h-56 flex-col items-center justify-center gap-3 rounded-lg border border-dashed bg-muted/30 p-6 text-center">
                 <div className="flex size-12 items-center justify-center rounded-lg bg-background text-muted-foreground">
                   <FileText />
                 </div>
                 <div>
-                  <p className="font-medium">Nenhum contrato cadastrado</p>
+                  <p className="font-medium">Nenhum contrato disponível</p>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Use o formulário ao lado para criar o primeiro contrato.
+                    {canManageContracts
+                      ? "Use o formulário ao lado para criar o primeiro contrato."
+                      : "As obras atribuídas a este usuário aparecerão aqui."}
                   </p>
                 </div>
               </div>
@@ -359,13 +377,14 @@ export function Contratos({ profile }: ContratosProps) {
                     <TableHead>Status</TableHead>
                     <TableHead>Prazo</TableHead>
                     <TableHead>Equipe</TableHead>
+                    <TableHead>Responsáveis</TableHead>
                     <TableHead>Efetivo</TableHead>
                     <TableHead>Serviços</TableHead>
                     {canManageContracts && <TableHead className="text-right">Ações</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {contracts.map((contract) => (
+                  {visibleContracts.map((contract) => (
                     <TableRow key={contract.id}>
                       <TableCell>
                         <div className="flex flex-col">
@@ -396,6 +415,16 @@ export function Contratos({ profile }: ContratosProps) {
                         </div>
                       </TableCell>
                       <TableCell>{contract.team}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span>
+                            Gestor: {getUserById(contract.managerId)?.name ?? "-"}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            Líder: {getUserById(contract.leaderId)?.name ?? "-"}
+                          </span>
+                        </div>
+                      </TableCell>
                       <TableCell>
                         <div className="flex flex-col">
                           <span className="font-medium">
@@ -456,7 +485,7 @@ export function Contratos({ profile }: ContratosProps) {
             <CardDescription>
               {canManageContracts
                 ? "Informe dados principais, efetivo planejado e serviços do contrato."
-                : "O perfil Gestor acompanha os contratos, mas não cria nem edita registros."}
+                : "Este perfil acompanha os contratos disponíveis para o usuário selecionado."}
             </CardDescription>
             {canManageContracts && isEditing && (
               <CardAction>
@@ -589,6 +618,50 @@ export function Contratos({ profile }: ContratosProps) {
                       required
                     />
                   </Field>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Field>
+                      <FieldLabel htmlFor="contract-manager">
+                        Gestor responsável
+                      </FieldLabel>
+                      <select
+                        id="contract-manager"
+                        className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                        value={formData.managerId}
+                        onChange={(event) =>
+                          updateField("managerId", event.target.value)
+                        }
+                        required
+                      >
+                        {managerOptions.map((manager) => (
+                          <option key={manager.id} value={manager.id}>
+                            {manager.name}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+
+                    <Field>
+                      <FieldLabel htmlFor="contract-leader">
+                        Líder responsável
+                      </FieldLabel>
+                      <select
+                        id="contract-leader"
+                        className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                        value={formData.leaderId}
+                        onChange={(event) =>
+                          updateField("leaderId", event.target.value)
+                        }
+                        required
+                      >
+                        {leaderOptions.map((leader) => (
+                          <option key={leader.id} value={leader.id}>
+                            {leader.name}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  </div>
 
                   <Field>
                     <FieldLabel htmlFor="contract-observations">Observações</FieldLabel>
@@ -819,18 +892,18 @@ export function Contratos({ profile }: ContratosProps) {
                           </Field>
                           <Field>
                             <FieldLabel htmlFor={`service-value-${service.id}`}>
-                              Valor contratado
+                              Valor unitário
                             </FieldLabel>
                             <Input
                               id={`service-value-${service.id}`}
                               type="number"
                               min="0"
                               step="0.01"
-                              value={getNumberInputValue(service.contractValue)}
+                              value={getNumberInputValue(service.unitValue)}
                               onChange={(event) =>
                                 updateServiceField(
                                   service.id,
-                                  "contractValue",
+                                  "unitValue",
                                   event.target.value === ""
                                     ? 0
                                     : Number(event.target.value)
@@ -840,12 +913,12 @@ export function Contratos({ profile }: ContratosProps) {
                           </Field>
                           <Field>
                             <FieldLabel htmlFor={`service-unit-value-${service.id}`}>
-                              Valor unitário
+                              Valor contratado
                             </FieldLabel>
                             <Input
                               id={`service-unit-value-${service.id}`}
                               value={currencyFormatter.format(
-                                getServiceUnitValue(service)
+                                getServiceContractValue(service)
                               )}
                               readOnly
                             />
@@ -941,9 +1014,9 @@ export function Contratos({ profile }: ContratosProps) {
           ) : (
             <CardContent className="flex flex-col gap-4">
               <div className="rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
-                Apenas o perfil Diretor pode criar, editar e excluir contratos. O
-                Gestor usa esta tela para acompanhar serviços, prazo e efetivo
-                planejado.
+                Apenas o perfil Coordenador pode criar, editar e excluir
+                contratos. Os demais perfis acompanham serviços, prazo e efetivo
+                planejado conforme suas obras atribuídas.
               </div>
 
               {feedback && (

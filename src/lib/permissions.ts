@@ -11,6 +11,7 @@ export type AppCapability =
   | "reports.view"
   | "requests.view"
   | "requests.create"
+  | "requests.edit"
   | "requests.update-status"
 
 export const capabilitiesByProfile: Record<UserProfile, AppCapability[]> = {
@@ -28,6 +29,7 @@ export const capabilitiesByProfile: Record<UserProfile, AppCapability[]> = {
     "review.manage",
     "reports.view",
     "requests.view",
+    "requests.edit",
   ],
   leader: [
     "daily-execution.view",

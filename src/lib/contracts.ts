@@ -1,3 +1,5 @@
+import { getUsersByProfile, type AppUser } from "@/lib/profile"
+
 export type ContractStatus = "ativo" | "pausado" | "encerrado"
 export type ContractDeadlineUnit = "dia" | "semana" | "mes"
 
@@ -14,6 +16,7 @@ export type ContractService = {
   description: string
   unit: string
   totalQuantity: number
+  unitValue: number
   contractValue: number
   monthlyGoal: number
   dailyGoal: number
@@ -30,6 +33,8 @@ export type Contract = {
   expectedEndDate: string
   status: ContractStatus
   team: string
+  managerId: string
+  leaderId: string
   employeeCount: number
   plannedWorkforce: PlannedWorkforceRole[]
   observations: string
@@ -74,6 +79,7 @@ export function createEmptyService(): ContractService {
     description: "",
     unit: "m",
     totalQuantity: 0,
+    unitValue: 0,
     contractValue: 0,
     monthlyGoal: 0,
     dailyGoal: 0,
@@ -128,6 +134,9 @@ export function normalizePlannedWorkforce(
 }
 
 export function createEmptyContractForm(): ContractFormData {
+  const defaultManagerId = getUsersByProfile("manager")[0]?.id ?? ""
+  const defaultLeaderId = getUsersByProfile("leader")[0]?.id ?? ""
+
   return {
     name: "",
     client: "",
@@ -137,6 +146,8 @@ export function createEmptyContractForm(): ContractFormData {
     expectedEndDate: "",
     status: "ativo",
     team: "",
+    managerId: defaultManagerId,
+    leaderId: defaultLeaderId,
     employeeCount: 1,
     plannedWorkforce: [createEmptyPlannedWorkforceRole()],
     observations: "",
@@ -145,10 +156,26 @@ export function createEmptyContractForm(): ContractFormData {
 }
 
 export function getServiceUnitValue(service: ContractService) {
-  const totalQuantity = Number(service.totalQuantity) || 0
-  const contractValue = Number(service.contractValue) || 0
+  return Number(service.unitValue) || 0
+}
 
-  return totalQuantity > 0 ? contractValue / totalQuantity : 0
+export function getServiceContractValue(service: ContractService) {
+  const totalQuantity = Number(service.totalQuantity) || 0
+  const unitValue = getServiceUnitValue(service)
+
+  return totalQuantity * unitValue
+}
+
+export function getContractsForUser(contracts: Contract[], currentUser: AppUser) {
+  if (currentUser.profile === "director" || currentUser.profile === "logistics") {
+    return contracts
+  }
+
+  if (currentUser.profile === "manager") {
+    return contracts.filter((contract) => contract.managerId === currentUser.id)
+  }
+
+  return contracts.filter((contract) => contract.leaderId === currentUser.id)
 }
 
 export function loadContracts(): Contract[] {
@@ -190,6 +217,14 @@ export function loadContracts(): Contract[] {
           1,
         plannedWorkforce,
         observations: contract.observations ?? "",
+        managerId:
+          typeof contract.managerId === "string" && contract.managerId.length > 0
+            ? contract.managerId
+            : getUsersByProfile("manager")[0]?.id ?? "",
+        leaderId:
+          typeof contract.leaderId === "string" && contract.leaderId.length > 0
+            ? contract.leaderId
+            : getUsersByProfile("leader")[0]?.id ?? "",
         services: Array.isArray(contract.services)
           ? contract.services.map(
               (service: Partial<ContractService> & { unitValue?: number }) => ({
@@ -199,10 +234,19 @@ export function loadContracts(): Contract[] {
                 description: service.description ?? "",
                 unit: service.unit ?? "m",
                 totalQuantity: Number(service.totalQuantity) || 0,
+                unitValue:
+                  Number(service.unitValue) ||
+                  ((Number(service.totalQuantity) || 0) > 0
+                    ? (Number(service.contractValue) || 0) /
+                      (Number(service.totalQuantity) || 0)
+                    : 0),
                 contractValue:
-                  Number(service.contractValue) ||
                   (Number(service.totalQuantity) || 0) *
-                    (Number(service.unitValue) || 0),
+                  (Number(service.unitValue) ||
+                    ((Number(service.totalQuantity) || 0) > 0
+                      ? (Number(service.contractValue) || 0) /
+                        (Number(service.totalQuantity) || 0)
+                      : 0)),
                 monthlyGoal: Number(service.monthlyGoal) || 0,
                 dailyGoal: Number(service.dailyGoal) || 0,
                 completedQuantity: Number(service.completedQuantity) || 0,

@@ -31,16 +31,26 @@ import {
   hasWorkforceDivergence,
   numberFormatter,
 } from "@/lib/analytics"
-import { loadContracts } from "@/lib/contracts"
+import { getContractsForUser, loadContracts } from "@/lib/contracts"
 import { loadDailyExecutions } from "@/lib/daily-executions"
+import type { AppUser } from "@/lib/profile"
 import { loadOperationalRequests } from "@/lib/requests"
 
 const DASHBOARD_TOLERANCE = 5
 
-function getDashboardData() {
-  const contracts = loadContracts()
-  const executions = loadDailyExecutions()
-  const requests = loadOperationalRequests()
+type DashboardProps = {
+  currentUser: AppUser
+}
+
+function getDashboardData(currentUser: AppUser) {
+  const contracts = getContractsForUser(loadContracts(), currentUser)
+  const allowedContractIds = new Set(contracts.map((contract) => contract.id))
+  const executions = loadDailyExecutions().filter((execution) =>
+    allowedContractIds.has(execution.contractId)
+  )
+  const requests = loadOperationalRequests().filter((request) =>
+    allowedContractIds.has(request.contractId)
+  )
   const summaries = buildContractSummaries(contracts, executions)
   const rows = buildReportRows(contracts, executions)
   const activeContracts = contracts.filter(
@@ -105,8 +115,8 @@ function getDashboardData() {
   }
 }
 
-export function Dashboard() {
-  const data = getDashboardData()
+export function Dashboard({ currentUser }: DashboardProps) {
+  const data = getDashboardData(currentUser)
   const topContracts = data.summaries
     .slice()
     .sort((a, b) => b.percentExecuted - a.percentExecuted)
