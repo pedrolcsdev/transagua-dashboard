@@ -30,7 +30,10 @@ const navigationByPath = Object.fromEntries(
 ) as Record<string, NavItem>
 
 export const navigationByProfile: Record<UserProfile, NavItem[]> = {
-  leader: [navigationByPath["/lancamento-diario"], navigationByPath["/solicitacoes"]],
+  leader: [
+    navigationByPath["/lancamento-diario"],
+    navigationByPath["/solicitacoes"],
+  ],
   manager: [
     navigationByPath["/dashboard"],
     navigationByPath["/contratos"],

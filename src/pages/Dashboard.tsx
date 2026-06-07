@@ -1,6 +1,7 @@
 import {
   AlertTriangle,
   Briefcase,
+  CalendarDays,
   ClipboardList,
   PackageOpen,
   TrendingDown,
@@ -9,7 +10,6 @@ import {
 } from "lucide-react"
 
 import { MetricCard } from "@/components/MetricCard"
-import { PageHeader } from "@/components/PageHeader"
 import { HorizontalBarChart } from "@/components/SimpleCharts"
 import { EmptyState } from "@/components/StateViews"
 import { Badge } from "@/components/ui/badge"
@@ -97,7 +97,8 @@ function getDashboardData(currentUser: AppUser) {
     ...workforceDivergenceContracts.slice(0, 2).map((contract) => ({
       id: `workforce-${contract.id}`,
       title: contract.name,
-      description: "Último lançamento com divergência entre efetivo planejado e realizado",
+      description:
+        "Último lançamento com divergência entre efetivo planejado e realizado",
       badgeLabel: "Efetivo divergente",
       badgeClassName: "border-amber-200 bg-amber-50 text-amber-700",
     })),
@@ -128,13 +129,46 @@ export function Dashboard({ currentUser }: DashboardProps) {
     helper: `${numberFormatter.format(summary.percentExecuted)}%`,
   }))
 
+  const healthScore =
+    data.activeContracts === 0
+      ? 0
+      : Math.max(
+          0,
+          Math.round(
+            ((data.activeContracts - data.delayedContracts.length) /
+              data.activeContracts) *
+              100
+          )
+        )
+
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        eyebrow="Visão executiva"
-        title="Dashboard"
-        description="Acompanhe ritmo contratual, solicitações pendentes, equipes abaixo da meta e divergências de efetivo sem perder o foco operacional."
-      />
+    <div className="flex flex-col gap-5">
+      <section className="grid gap-4 rounded-[2.2rem] border border-[#dfe8ea] bg-white p-5 shadow-[0_24px_60px_-34px_rgba(15,23,42,0.35)] lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end lg:p-7">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-[#667b80]">
+            Olá, {currentUser.name}
+          </p>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight text-[#101820]">
+            Painel operacional
+          </h1>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-[#667b80]">
+            Acompanhe ritmo contratual, solicitações pendentes, equipes abaixo
+            da meta e divergências de efetivo sem perder o foco operacional.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2 rounded-2xl border border-[#e5ecef] bg-[#f6f8fb] p-1">
+          <span className="rounded-xl px-3 py-2 text-xs font-semibold text-[#667b80]">
+            Hoje
+          </span>
+          <span className="rounded-xl bg-[#101820] px-3 py-2 text-xs font-semibold text-white">
+            Semana
+          </span>
+          <span className="flex size-8 items-center justify-center rounded-xl bg-white text-[#667b80]">
+            <CalendarDays className="size-4" />
+          </span>
+        </div>
+      </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <MetricCard
@@ -166,26 +200,56 @@ export function Dashboard({ currentUser }: DashboardProps) {
         />
         <MetricCard
           title="Divergência de efetivo"
-          description="Último lançamento do contrato"
+          description="Último lançamento"
           value={data.workforceDivergenceContracts.length}
           icon={Users}
           tone={data.workforceDivergenceContracts.length > 0 ? "warning" : "default"}
         />
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-4">
-        <MetricCard
-          title="Equipes abaixo da meta"
-          description="Último lançamento do contrato"
-          value={data.contractsBelowGoal.length}
-          icon={ClipboardList}
-          tone={data.contractsBelowGoal.length > 0 ? "danger" : "default"}
-        />
+      <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+        <Card className="border-[#dfe8ea] bg-white shadow-[0_28px_70px_-42px_rgba(15,23,42,0.45)]">
+          <CardHeader className="grid gap-1 sm:grid-cols-[1fr_auto] sm:items-start">
+            <div>
+              <CardTitle className="text-lg text-[#101820]">
+                Ritmo geral da operação
+              </CardTitle>
+              <CardDescription className="text-[#667b80]">
+                Saúde dos contratos ativos nesta carteira.
+              </CardDescription>
+            </div>
+            <Badge className="w-fit border-[#d7edf2] bg-[#eef8fb] text-[#087fca]">
+              {healthScore}% estável
+            </Badge>
+          </CardHeader>
+          <CardContent className="grid gap-5 lg:grid-cols-[0.8fr_1.2fr]">
+            <div className="rounded-[1.5rem] border border-[#dfe8ea] bg-[#f8fafc] p-5">
+              <p className="text-sm text-[#667b80]">Índice de saúde</p>
+              <p className="mt-3 font-mono text-5xl font-semibold tracking-tight">
+                {healthScore}
+              </p>
+              <p className="mt-2 text-sm text-[#667b80]">
+                Quanto menor o atraso relativo, maior o índice.
+              </p>
+            </div>
+            <div className="rounded-[1.5rem] border border-[#dfe8ea] bg-[#f8fafc] p-5">
+              {chartItems.length === 0 ? (
+                <EmptyState
+                  icon={Briefcase}
+                  title="Sem dados de execução"
+                  description="Cadastre contratos e lançamentos para visualizar este gráfico."
+                />
+              ) : (
+                <HorizontalBarChart items={chartItems} />
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
-        <Card className="rounded-lg border-[#d7e5e5] shadow-[0_12px_36px_rgba(12,55,56,0.06)] lg:col-span-3">
+        <Card className="border-[#dfe8ea] bg-white shadow-[0_24px_55px_-34px_rgba(15,23,42,0.32)]">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <AlertTriangle />
+            <CardTitle className="flex items-center gap-2 text-base">
+              <AlertTriangle className="size-5 text-[#087fca]" />
               Alertas operacionais
             </CardTitle>
             <CardDescription>
@@ -203,7 +267,7 @@ export function Dashboard({ currentUser }: DashboardProps) {
               data.alerts.map((alert) => (
                 <div
                   key={alert.id}
-                  className="flex items-start justify-between gap-3 rounded-lg border bg-muted/20 p-3"
+                  className="flex items-start justify-between gap-3 rounded-2xl border border-[#e5ecef] bg-[#f8fafc] p-3"
                 >
                   <div className="min-w-0">
                     <p className="truncate font-medium">{alert.title}</p>
@@ -221,30 +285,20 @@ export function Dashboard({ currentUser }: DashboardProps) {
         </Card>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-[1fr_360px]">
-        <Card className="rounded-lg border-[#d7e5e5] shadow-[0_12px_36px_rgba(12,55,56,0.06)]">
-          <CardHeader>
-            <CardTitle>Execução por contrato</CardTitle>
-            <CardDescription>Contratos com maior avanço físico</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {chartItems.length === 0 ? (
-              <EmptyState
-                icon={Briefcase}
-                title="Sem dados de execução"
-                description="Cadastre contratos e lançamentos para visualizar este gráfico."
-              />
-            ) : (
-              <HorizontalBarChart items={chartItems} />
-            )}
-          </CardContent>
-        </Card>
+      <section className="grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
+        <MetricCard
+          title="Equipes abaixo da meta"
+          description="Último lançamento do contrato"
+          value={data.contractsBelowGoal.length}
+          icon={ClipboardList}
+          tone={data.contractsBelowGoal.length > 0 ? "danger" : "default"}
+        />
 
-        <Card className="rounded-lg border-[#d7e5e5] shadow-[0_12px_36px_rgba(12,55,56,0.06)]">
+        <Card className="border-[#dfe8ea] bg-white shadow-[0_24px_55px_-34px_rgba(15,23,42,0.32)]">
           <CardHeader>
-            <CardTitle>Ritmo contratual</CardTitle>
+            <CardTitle>Comparativo de ritmo contratual</CardTitle>
             <CardDescription>
-              Comparação entre o executado e o progresso esperado.
+              Contratos ordenados pelo desvio entre executado e esperado.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
@@ -262,31 +316,33 @@ export function Dashboard({ currentUser }: DashboardProps) {
                 .map((summary) => (
                   <div
                     key={summary.contract.id}
-                    className="rounded-lg border bg-muted/20 p-3"
+                    className="grid gap-3 rounded-2xl border border-[#e5ecef] bg-[#f8fafc] p-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
                   >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="font-medium">{summary.contract.name}</p>
-                      <Badge
-                        variant="outline"
-                        className={
-                          summary.progressGap < -DASHBOARD_TOLERANCE
-                            ? "border-red-200 bg-red-50 text-red-700"
-                            : summary.progressGap > DASHBOARD_TOLERANCE
-                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                              : "border-amber-200 bg-amber-50 text-amber-700"
-                        }
-                      >
-                        {summary.progressGap < -DASHBOARD_TOLERANCE
-                          ? "Atrasado"
-                          : summary.progressGap > DASHBOARD_TOLERANCE
-                            ? "Adiantado"
-                            : "No ritmo"}
-                      </Badge>
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">
+                        {summary.contract.name}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Executado {numberFormatter.format(summary.percentExecuted)}% ·
+                        Esperado {numberFormatter.format(summary.expectedProgress)}%
+                      </p>
                     </div>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Executado {numberFormatter.format(summary.percentExecuted)}% ·
-                      Esperado {numberFormatter.format(summary.expectedProgress)}%
-                    </p>
+                    <Badge
+                      variant="outline"
+                      className={
+                        summary.progressGap < -DASHBOARD_TOLERANCE
+                          ? "border-red-200 bg-red-50 text-red-700"
+                          : summary.progressGap > DASHBOARD_TOLERANCE
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                            : "border-amber-200 bg-amber-50 text-amber-700"
+                      }
+                    >
+                      {summary.progressGap < -DASHBOARD_TOLERANCE
+                        ? "Atrasado"
+                        : summary.progressGap > DASHBOARD_TOLERANCE
+                          ? "Adiantado"
+                          : "No ritmo"}
+                    </Badge>
                   </div>
                 ))
             )}

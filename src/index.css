@@ -60,8 +60,9 @@ body {
   min-height: 100svh;
   margin: 0;
   background:
-    radial-gradient(circle at top right, rgba(99, 199, 189, 0.18), transparent 28rem),
-    #eef5f5;
+    radial-gradient(circle at top left, rgba(8, 127, 202, 0.08), transparent 28rem),
+    radial-gradient(circle at top right, rgba(99, 199, 189, 0.12), transparent 30rem),
+    #f6f8fb;
 }
 
 button,

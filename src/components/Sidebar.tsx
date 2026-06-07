@@ -1,39 +1,46 @@
+import { Bell, CircleHelp, X } from "lucide-react"
 import { NavLink } from "react-router-dom"
-import { Droplets } from "lucide-react"
 
-import { Separator } from "@/components/ui/separator"
-import { cn } from "@/lib/utils"
+import { BrandLogo } from "@/components/BrandLogo"
+import { Button } from "@/components/ui/button"
 import { navigationByProfile } from "@/lib/navigation"
 import { getProfileLabel, type UserProfile } from "@/lib/profile"
+import { cn } from "@/lib/utils"
 
 type SidebarProps = {
   profile: UserProfile
   onNavigate?: () => void
+  onClose?: () => void
 }
 
-export function Sidebar({ profile, onNavigate }: SidebarProps) {
+export function Sidebar({ profile, onNavigate, onClose }: SidebarProps) {
   const navigation = navigationByProfile[profile]
 
   return (
-    <div className="flex h-full min-h-svh flex-col px-4 py-5 text-white">
-      <div className="flex items-center gap-3 px-2">
-        <div className="flex size-10 items-center justify-center rounded-lg bg-[#8ee8dc] text-[#073234] shadow-[0_8px_22px_rgba(142,232,220,0.22)]">
-          <Droplets />
-        </div>
-        <div>
-          <p className="text-base font-semibold leading-tight">Transágua</p>
-          <p className="text-xs text-[#a9c9ca]">Saneamento e infraestrutura</p>
-        </div>
+    <div className="flex h-full min-h-[32rem] flex-col rounded-[1.75rem] border border-white/80 bg-[#f8fafc] p-3 text-[#101820] shadow-[0_24px_70px_rgba(15,23,42,0.24)]">
+      <div className="flex items-center justify-between gap-3 px-1 pb-6">
+        <BrandLogo className="h-11" />
+
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-9 rounded-2xl text-[#111] hover:bg-[#edf4f5]"
+          onClick={onClose}
+          aria-label="Fechar navegação"
+        >
+          <X data-icon="inline-start" />
+        </Button>
       </div>
 
-      <Separator className="my-5 bg-white/10" />
-
-      <div className="rounded-lg border border-white/10 bg-white/5 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-        <p className="text-xs uppercase text-[#a9c9ca]">Perfil ativo</p>
-        <p className="mt-1 text-sm font-semibold">{getProfileLabel(profile)}</p>
+      <div className="mb-5 rounded-3xl border border-[#e5ecef] bg-white px-3 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.05)]">
+        <p className="text-xs font-medium uppercase tracking-wide text-[#6b7475]">
+          Perfil ativo
+        </p>
+        <p className="text-sm font-bold">{getProfileLabel(profile)}</p>
       </div>
 
-      <nav className="mt-5 flex flex-col gap-1" aria-label="Navegação principal">
+      <nav className="flex flex-col gap-2" aria-label="Navegação principal">
         {navigation.map((item) => {
           const Icon = item.icon
 
@@ -44,21 +51,36 @@ export function Sidebar({ profile, onNavigate }: SidebarProps) {
               onClick={onNavigate}
               className={({ isActive }) =>
                 cn(
-                  "flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium text-[#d8eeee] transition hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-[#8ee8dc]",
+                  "flex h-12 items-center gap-4 rounded-2xl px-3 text-sm font-semibold text-[#46575c] transition hover:bg-white hover:text-[#057f97] focus-visible:ring-2 focus-visible:ring-[#0799b5] active:translate-y-px",
                   isActive &&
-                    "bg-[#eafffb] text-[#073234] shadow-sm hover:bg-[#eafffb] hover:text-[#073234]"
+                    "bg-[#0799b5] text-white shadow-[0_12px_30px_rgba(7,153,181,0.22)] hover:bg-[#0799b5] hover:text-white"
                 )
               }
             >
-              <Icon />
-              <span>{item.label}</span>
+              <Icon className="size-5 shrink-0 stroke-[2.4]" />
+              <span className="truncate">{item.label}</span>
             </NavLink>
           )
         })}
       </nav>
 
-      <div className="mt-auto rounded-lg border border-white/10 bg-[#0f4243] p-3 text-xs leading-5 text-[#b7d4d5]">
-        Centro operacional com dados persistidos neste navegador.
+      <div className="mt-auto flex flex-col gap-2">
+        <Button
+          type="button"
+          variant="ghost"
+          className="h-12 w-full justify-start gap-4 rounded-2xl px-3 text-sm font-medium text-[#46575c] hover:bg-white"
+        >
+          <Bell className="size-5 stroke-[2.4]" data-icon="inline-start" />
+          <span>Notificações</span>
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          className="h-12 w-full justify-start gap-4 rounded-2xl px-3 text-sm font-medium text-[#46575c] hover:bg-white"
+        >
+          <CircleHelp className="size-5 stroke-[2.4]" data-icon="inline-start" />
+          <span>Ajuda e informações</span>
+        </Button>
       </div>
     </div>
   )
