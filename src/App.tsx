@@ -25,6 +25,7 @@ import { LancamentoDiario } from "@/pages/LancamentoDiario"
 import { Relatorios } from "@/pages/Relatorios"
 import { Revisao } from "@/pages/Revisao"
 import { Solicitacoes } from "@/pages/Solicitacoes"
+import { Testes } from "@/pages/Testes"
 import { Usuarios } from "@/pages/Usuarios"
 
 function ShellRoutes() {
@@ -87,6 +88,10 @@ function ShellRoutes() {
         <Route
           path="/relatorios"
           element={<Relatorios key={user.id} currentUser={user} />}
+        />
+        <Route
+          path="/testes"
+          element={<Testes key={user.id} currentUser={user} />}
         />
         <Route path="/usuarios" element={<Usuarios />} />
         <Route

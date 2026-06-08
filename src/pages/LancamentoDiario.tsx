@@ -36,6 +36,7 @@ import {
   type WorkforceActualItem,
 } from "@/lib/daily-executions"
 import { createId } from "@/lib/contracts"
+import { formatDateTimeBR } from "@/lib/dates"
 import { hasCapability } from "@/lib/permissions"
 import type { AppUser } from "@/lib/profile"
 
@@ -425,7 +426,7 @@ export function LancamentoDiario({ currentUser }: LancamentoDiarioProps) {
               {executionIsClosed && (
                 <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                   <Lock className="size-4" />
-                  Expediente fechado em {existingExecution?.closedAt?.slice(0, 16).replace("T", " ")}.
+                  Expediente fechado em {formatDateTimeBR(existingExecution?.closedAt)}.
                   Apenas o Gestor pode corrigir pela tela de revisão.
                 </div>
               )}

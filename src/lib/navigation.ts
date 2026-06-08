@@ -4,6 +4,7 @@ import {
   ClipboardCheck,
   ClipboardList,
   FileText,
+  FlaskConical,
   HardHat,
   PackageOpen,
 } from "lucide-react"
@@ -23,6 +24,7 @@ export const allNavigationItems: NavItem[] = [
   { label: "Solicitações", path: "/solicitacoes", icon: PackageOpen },
   { label: "Revisão", path: "/revisao", icon: ClipboardCheck },
   { label: "Relatórios", path: "/relatorios", icon: ClipboardList },
+  { label: "Testes", path: "/testes", icon: FlaskConical },
 ]
 
 const navigationByPath = Object.fromEntries(
@@ -46,6 +48,7 @@ export const navigationByProfile: Record<UserProfile, NavItem[]> = {
     navigationByPath["/contratos"],
     navigationByPath["/relatorios"],
     navigationByPath["/solicitacoes"],
+    navigationByPath["/testes"],
   ],
   logistics: [navigationByPath["/solicitacoes"]],
 }

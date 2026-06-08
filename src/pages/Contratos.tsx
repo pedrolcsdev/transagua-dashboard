@@ -44,6 +44,11 @@ import {
   type ContractStatus,
   type PlannedWorkforceRole,
 } from "@/lib/contracts"
+import {
+  formatDateBR,
+  maskDateInputValue,
+  normalizeDateForInput,
+} from "@/lib/dates"
 import { hasCapability } from "@/lib/permissions"
 import { getUserById, getUsersByProfile, type AppUser } from "@/lib/profile"
 
@@ -62,6 +67,166 @@ type ContratosProps = {
 
 function getNumberInputValue(value: number) {
   return value === 0 ? "" : String(value)
+}
+
+type TestContractTemplateId = "test-1" | "test-2"
+
+function createService(
+  service: Omit<ContractService, "id" | "contractValue">
+): ContractService {
+  return {
+    id: createId(),
+    ...service,
+    contractValue: Number(service.totalQuantity) * Number(service.unitValue),
+  }
+}
+
+function createWorkforceRole(
+  roleName: string,
+  plannedCount: number
+): PlannedWorkforceRole {
+  return {
+    id: createId(),
+    roleName,
+    plannedCount,
+  }
+}
+
+function buildTestContractTemplate(
+  templateId: TestContractTemplateId,
+  managerOptions: AppUser[],
+  leaderOptions: AppUser[]
+): ContractFormData {
+  const primaryManager = managerOptions[0]?.id ?? ""
+  const secondaryManager = managerOptions[1]?.id ?? primaryManager
+  const primaryLeader = leaderOptions[0]?.id ?? ""
+  const secondaryLeader = leaderOptions[1]?.id ?? primaryLeader
+
+  if (templateId === "test-2") {
+    const plannedWorkforce = [
+      createWorkforceRole("Encarregado de frente", 1),
+      createWorkforceRole("Operador de retroescavadeira", 2),
+      createWorkforceRole("Ajudante operacional", 5),
+      createWorkforceRole("Motorista", 2),
+    ]
+
+    return {
+      name: "Contrato teste 2 - Setor Norte",
+      client: "Prefeitura Municipal de Vale Verde",
+      workingDaysDeadline: 18,
+      deadlineUnit: "semana",
+      startDate: formatDateBR("2026-07-08", ""),
+      expectedEndDate: formatDateBR("2026-11-11", ""),
+      status: "ativo",
+      team: "Equipe Norte - Drenagem e recomposição",
+      managerId: secondaryManager,
+      leaderId: secondaryLeader,
+      employeeCount: getPlannedWorkforceTotal(plannedWorkforce),
+      plannedWorkforce,
+      observations:
+        "Modelo de teste para contrato com foco em recomposição viária, drenagem superficial e atendimento em vias com tráfego local.",
+      services: [
+        createService({
+          code: "NOR-001",
+          name: "Drenagem superficial",
+          description:
+            "Execução de sarjetas, caixas coletoras e interligações para escoamento pluvial.",
+          unit: "m",
+          totalQuantity: 2600,
+          unitValue: 148,
+          monthlyGoal: 650,
+          dailyGoal: 32,
+          completedQuantity: 180,
+        }),
+        createService({
+          code: "NOR-002",
+          name: "Recomposição asfáltica",
+          description:
+            "Regularização de base, imprimação e recomposição asfáltica em trechos intervenientes.",
+          unit: "m²",
+          totalQuantity: 4200,
+          unitValue: 92,
+          monthlyGoal: 1050,
+          dailyGoal: 52,
+          completedQuantity: 240,
+        }),
+        createService({
+          code: "NOR-003",
+          name: "Sinalização provisória",
+          description:
+            "Instalação, manutenção e retirada de sinalização temporária de obra.",
+          unit: "un",
+          totalQuantity: 160,
+          unitValue: 185,
+          monthlyGoal: 40,
+          dailyGoal: 2,
+          completedQuantity: 12,
+        }),
+      ],
+    }
+  }
+
+  const plannedWorkforce = [
+    createWorkforceRole("Encarregado geral", 1),
+    createWorkforceRole("Pedreiro", 3),
+    createWorkforceRole("Servente", 6),
+    createWorkforceRole("Operador de compactador", 1),
+  ]
+
+  return {
+    name: "Contrato teste 1 - Vila Esperança",
+    client: "Companhia Águas do Litoral",
+    workingDaysDeadline: 90,
+    deadlineUnit: "dia",
+    startDate: formatDateBR("2026-06-15", ""),
+    expectedEndDate: formatDateBR("2026-09-28", ""),
+    status: "ativo",
+    team: "Equipe Sul - Rede coletora",
+    managerId: primaryManager,
+    leaderId: primaryLeader,
+    employeeCount: getPlannedWorkforceTotal(plannedWorkforce),
+    plannedWorkforce,
+    observations:
+      "Modelo de teste para contrato com implantação de rede, ligações domiciliares e recomposição de calçadas.",
+    services: [
+      createService({
+        code: "VES-001",
+        name: "Implantação de rede coletora",
+        description:
+          "Escavação, assentamento de tubulação PVC DN150 e reaterro compactado.",
+        unit: "m",
+        totalQuantity: 1800,
+        unitValue: 215,
+        monthlyGoal: 600,
+        dailyGoal: 30,
+        completedQuantity: 120,
+      }),
+      createService({
+        code: "VES-002",
+        name: "Ligações domiciliares",
+        description:
+          "Execução de ramais prediais, caixas de inspeção e conexão à rede principal.",
+        unit: "un",
+        totalQuantity: 220,
+        unitValue: 680,
+        monthlyGoal: 74,
+        dailyGoal: 4,
+        completedQuantity: 18,
+      }),
+      createService({
+        code: "VES-003",
+        name: "Recomposição de passeio",
+        description:
+          "Recomposição de calçadas em concreto desempenado após intervenção da rede.",
+        unit: "m²",
+        totalQuantity: 950,
+        unitValue: 125,
+        monthlyGoal: 315,
+        dailyGoal: 16,
+        completedQuantity: 64,
+      }),
+    ],
+  }
 }
 
 export function Contratos({ currentUser }: ContratosProps) {
@@ -182,6 +347,22 @@ export function Contratos({ currentUser }: ContratosProps) {
     setFormData(createEmptyContractForm())
   }
 
+  function loadTestContractTemplate(templateId: TestContractTemplateId) {
+    if (!canManageContracts || currentUser.profile !== "director") {
+      return
+    }
+
+    setEditingContractId(null)
+    setFormData(
+      buildTestContractTemplate(templateId, managerOptions, leaderOptions)
+    )
+    setFeedback(
+      templateId === "test-1"
+        ? "Contrato teste 1 carregado no formulário."
+        : "Contrato teste 2 carregado no formulário."
+    )
+  }
+
   function editContract(contract: Contract) {
     setEditingContractId(contract.id)
     setFormData({
@@ -189,8 +370,8 @@ export function Contratos({ currentUser }: ContratosProps) {
       client: contract.client,
       workingDaysDeadline: contract.workingDaysDeadline,
       deadlineUnit: contract.deadlineUnit,
-      startDate: contract.startDate,
-      expectedEndDate: contract.expectedEndDate,
+      startDate: formatDateBR(contract.startDate, ""),
+      expectedEndDate: formatDateBR(contract.expectedEndDate, ""),
       status: contract.status,
       team: contract.team,
       managerId: contract.managerId,
@@ -255,12 +436,27 @@ export function Contratos({ currentUser }: ContratosProps) {
     }
 
     const now = new Date().toISOString()
+    const normalizedStartDate = normalizeDateForInput(formData.startDate)
+    const normalizedExpectedEndDate = normalizeDateForInput(
+      formData.expectedEndDate
+    )
+
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(normalizedStartDate) ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(normalizedExpectedEndDate)
+    ) {
+      window.alert("Informe as datas no formato dia/mes/ano.")
+      return
+    }
+
     const normalizedFormData: ContractFormData = {
       ...formData,
       name: formData.name.trim(),
       client: formData.client.trim(),
       workingDaysDeadline: Number(formData.workingDaysDeadline) || 0,
       deadlineUnit: formData.deadlineUnit,
+      startDate: normalizedStartDate,
+      expectedEndDate: normalizedExpectedEndDate,
       team: formData.team.trim(),
       managerId: formData.managerId,
       leaderId: formData.leaderId,
@@ -370,54 +566,91 @@ export function Contratos({ currentUser }: ContratosProps) {
                 </div>
               </div>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Nome</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Prazo</TableHead>
-                    <TableHead>Equipe</TableHead>
-                    <TableHead>Responsáveis</TableHead>
-                    <TableHead>Efetivo</TableHead>
-                    <TableHead>Serviços</TableHead>
-                    {canManageContracts && <TableHead className="text-right">Ações</TableHead>}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {visibleContracts.map((contract) => (
-                    <TableRow key={contract.id}>
-                      <TableCell>
-                        <div className="flex flex-col">
-                          <span className="font-medium">{contract.name}</span>
+              <div className="[&_[data-slot=table-container]]:overflow-x-hidden">
+                <Table className="table-fixed">
+                  <colgroup>
+                    <col className="w-[24%]" />
+                    <col className="w-[12%]" />
+                    <col className="w-[18%]" />
+                    <col className="w-[17%]" />
+                    <col className="w-[19%]" />
+                    <col className="w-[10%]" />
+                  </colgroup>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nome</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Prazo</TableHead>
+                      <TableHead>Equipe</TableHead>
+                      <TableHead>Responsáveis</TableHead>
+                      <TableHead>Efetivo</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {visibleContracts.map((contract) => (
+                      <TableRow key={contract.id} className="group">
+                      <TableCell className="relative min-w-0 overflow-hidden">
+                        <div className="flex min-w-0 flex-col">
+                          <span className="truncate font-medium" title={contract.name}>
+                            {contract.name}
+                          </span>
                           <span className="text-xs text-muted-foreground">
                             {contract.client}
                           </span>
                         </div>
+                        {canManageContracts && (
+                          <div className="absolute right-1 top-1/2 flex -translate-y-1/2 gap-1 rounded-md bg-card/95 p-1 opacity-0 shadow-sm ring-1 ring-border transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon-sm"
+                              onClick={() => editContract(contract)}
+                              title="Editar contrato"
+                            >
+                              <Edit3 />
+                              <span className="sr-only">Editar contrato</span>
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="icon-sm"
+                              onClick={() => deleteContract(contract.id)}
+                              title="Excluir contrato"
+                            >
+                              <Trash2 />
+                              <span className="sr-only">Excluir contrato</span>
+                            </Button>
+                          </div>
+                        )}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="overflow-hidden">
                         <Badge variant="secondary">
                           {statusLabelByValue[contract.status]}
                         </Badge>
                       </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col">
-                          <span>
+                      <TableCell className="min-w-0 overflow-hidden">
+                        <div className="flex min-w-0 flex-col">
+                          <span className="truncate">
                             {contract.workingDaysDeadline || "-"}{" "}
                             {getDeadlineUnitLabel(
                               contract.deadlineUnit,
                               contract.workingDaysDeadline
                             )}
                           </span>
-                          <span className="text-xs text-muted-foreground">
-                            {contract.startDate || "Sem início"} até{" "}
-                            {contract.expectedEndDate || "sem previsão"}
+                          <span className="truncate text-xs text-muted-foreground">
+                            {formatDateBR(contract.startDate, "Sem início")} até{" "}
+                            {formatDateBR(contract.expectedEndDate, "sem previsão")}
                           </span>
                         </div>
                       </TableCell>
-                      <TableCell>{contract.team}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-col">
-                          <span>
+                      <TableCell className="min-w-0 overflow-hidden">
+                        <span className="block truncate" title={contract.team}>
+                          {contract.team}
+                        </span>
+                      </TableCell>
+                      <TableCell className="min-w-0 overflow-hidden">
+                        <div className="flex min-w-0 flex-col">
+                          <span className="truncate">
                             Gestor: {getUserById(contract.managerId)?.name ?? "-"}
                           </span>
                           <span className="text-xs text-muted-foreground">
@@ -425,50 +658,19 @@ export function Contratos({ currentUser }: ContratosProps) {
                           </span>
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col">
+                      <TableCell className="overflow-hidden">
+                        <div className="flex flex-col leading-tight">
                           <span className="font-medium">
-                            {getPlannedWorkforceTotal(contract.plannedWorkforce)} pessoas
+                            {getPlannedWorkforceTotal(contract.plannedWorkforce)}
                           </span>
-                          <span className="text-xs text-muted-foreground">
-                            {contract.plannedWorkforce
-                              .map(
-                                (role) =>
-                                  `${role.plannedCount} ${role.roleName || "Função"}`
-                              )
-                              .join(" · ")}
-                          </span>
+                          <span className="text-xs text-muted-foreground">pessoas</span>
                         </div>
                       </TableCell>
-                      <TableCell>{contract.services.length}</TableCell>
-                      {canManageContracts && (
-                        <TableCell>
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => editContract(contract)}
-                            >
-                              <Edit3 data-icon="inline-start" />
-                              Editar
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="destructive"
-                              size="sm"
-                              onClick={() => deleteContract(contract.id)}
-                            >
-                              <Trash2 data-icon="inline-start" />
-                              Excluir
-                            </Button>
-                          </div>
-                        </TableCell>
-                      )}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             )}
           </CardContent>
         </Card>
@@ -487,12 +689,41 @@ export function Contratos({ currentUser }: ContratosProps) {
                 ? "Informe dados principais, efetivo planejado e serviços do contrato."
                 : "Este perfil acompanha os contratos disponíveis para o usuário selecionado."}
             </CardDescription>
-            {canManageContracts && isEditing && (
+            {canManageContracts && (currentUser.profile === "director" || isEditing) && (
               <CardAction>
-                <Button type="button" variant="ghost" size="sm" onClick={resetForm}>
-                  <X data-icon="inline-start" />
-                  Cancelar
-                </Button>
+                <div className="flex flex-wrap justify-end gap-2">
+                  {currentUser.profile === "director" && (
+                    <>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => loadTestContractTemplate("test-1")}
+                      >
+                        Contrato teste 1
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => loadTestContractTemplate("test-2")}
+                      >
+                        Contrato teste 2
+                      </Button>
+                    </>
+                  )}
+                  {isEditing && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={resetForm}
+                    >
+                      <X data-icon="inline-start" />
+                      Cancelar
+                    </Button>
+                  )}
+                </div>
               </CardAction>
             )}
           </CardHeader>
@@ -526,10 +757,16 @@ export function Contratos({ currentUser }: ContratosProps) {
                       <FieldLabel htmlFor="contract-start-date">Data início</FieldLabel>
                       <Input
                         id="contract-start-date"
-                        type="date"
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="dd/mm/aaaa"
+                        maxLength={10}
                         value={formData.startDate}
                         onChange={(event) =>
-                          updateField("startDate", event.target.value)
+                          updateField(
+                            "startDate",
+                            maskDateInputValue(event.target.value)
+                          )
                         }
                         required
                       />
@@ -540,10 +777,16 @@ export function Contratos({ currentUser }: ContratosProps) {
                       </FieldLabel>
                       <Input
                         id="contract-end-date"
-                        type="date"
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="dd/mm/aaaa"
+                        maxLength={10}
                         value={formData.expectedEndDate}
                         onChange={(event) =>
-                          updateField("expectedEndDate", event.target.value)
+                          updateField(
+                            "expectedEndDate",
+                            maskDateInputValue(event.target.value)
+                          )
                         }
                         required
                       />

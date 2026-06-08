@@ -17,6 +17,7 @@ type MetricCardProps = {
   icon?: LucideIcon
   tone?: "default" | "positive" | "warning" | "danger"
   children?: ReactNode
+  className?: string
 }
 
 const toneClassNames = {
@@ -33,13 +34,19 @@ export function MetricCard({
   icon: Icon,
   tone = "default",
   children,
+  className,
 }: MetricCardProps) {
   return (
-    <Card className="rounded-[1.7rem] border-[#dfe8ea] bg-white shadow-[0_20px_45px_-28px_rgba(15,23,42,0.28)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_24px_55px_-30px_rgba(15,23,42,0.35)]">
+    <Card
+      className={cn(
+        "rounded-2xl border-[#dfe8ea] bg-white shadow-[0_14px_34px_-26px_rgba(15,23,42,0.28)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_42px_-28px_rgba(15,23,42,0.34)]",
+        className
+      )}
+    >
       <CardHeader className="pb-0">
         <CardTitle className="flex items-center gap-3 text-sm">
           {Icon && (
-            <span className="flex size-10 items-center justify-center rounded-2xl bg-[#eef7f8] text-[#087fca]">
+            <span className="flex size-9 items-center justify-center rounded-xl bg-[#eef7f8] text-[#087fca]">
               <Icon className="size-5" />
             </span>
           )}
@@ -50,7 +57,7 @@ export function MetricCard({
       <CardContent className="flex flex-col gap-3">
         <p
           className={cn(
-            "font-mono text-3xl font-semibold tracking-tight",
+            "font-mono text-3xl font-semibold leading-none tracking-tight",
             toneClassNames[tone]
           )}
         >

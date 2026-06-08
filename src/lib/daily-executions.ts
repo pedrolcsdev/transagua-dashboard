@@ -1,5 +1,6 @@
 import type { Contract } from "@/lib/contracts"
 import { createId } from "@/lib/contracts"
+import { normalizeDateForInput } from "@/lib/dates"
 import type { UserProfile } from "@/lib/profile"
 
 export type DeviationReason =
@@ -101,7 +102,7 @@ export function loadDailyExecutions(): DailyExecution[] {
       return {
       id: execution.id ?? createId(),
       contractId: execution.contractId ?? "",
-      date: execution.date ?? "",
+      date: normalizeDateForInput(execution.date),
       items: items.map((item) => {
         const itemRecord = item as Record<string, unknown>
         const reviewHistory = Array.isArray(itemRecord.reviewHistory)

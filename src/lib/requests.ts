@@ -1,4 +1,5 @@
 import { createId } from "@/lib/contracts"
+import { normalizeDateForInput } from "@/lib/dates"
 import type { AppUser, UserProfile } from "@/lib/profile"
 
 export type RequestStatus = "pendente" | "em-atendimento" | "atendido"
@@ -78,7 +79,7 @@ export function loadOperationalRequests(): OperationalRequest[] {
       title: request.title ?? "",
       description: request.description ?? "",
       contractId: request.contractId ?? "",
-      date: request.date ?? "",
+      date: normalizeDateForInput(request.date),
       status:
         request.status === "em-atendimento" || request.status === "atendido"
           ? request.status

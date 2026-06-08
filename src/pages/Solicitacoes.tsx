@@ -90,6 +90,7 @@ export function Solicitacoes({ currentUser }: SolicitacoesProps) {
   const canEditRequests = hasCapability(profile, "requests.edit")
   const canUpdateStatus = hasCapability(profile, "requests.update-status")
   const editingRequest = requests.find((request) => request.id === editingRequestId)
+  const showSidebarCard = canCreateRequests || Boolean(editingRequest)
 
   const pendingCount = useMemo(
     () =>
@@ -300,24 +301,27 @@ export function Solicitacoes({ currentUser }: SolicitacoesProps) {
         />
       </section>
 
-      <div className="grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
-        <Card className="rounded-lg">
-          <CardHeader>
-            <CardTitle>
-              {canCreateRequests ? "Nova solicitação" : "Painel do perfil"}
-            </CardTitle>
-            <CardDescription>
-              {canCreateRequests
-                ? "O Líder registra a necessidade da obra."
-                : canUpdateStatus
-                  ? "A Logística acompanha solicitações e atualiza status."
-                  : canEditRequests
-                    ? "O Gestor corrige solicitações com histórico auditável."
-                    : "Coordenador e Gestor acompanham o fluxo conforme suas obras."}
-            </CardDescription>
-          </CardHeader>
+      <div
+        className={
+          showSidebarCard
+            ? "grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]"
+            : "grid gap-6"
+        }
+      >
+        {showSidebarCard ? (
+          <Card className="rounded-lg">
+            <CardHeader>
+              <CardTitle>
+                {canCreateRequests ? "Nova solicitação" : "Editar solicitação"}
+              </CardTitle>
+              <CardDescription>
+                {canCreateRequests
+                  ? "O Líder registra a necessidade da obra."
+                  : "Revise a solicitação selecionada e registre a observação da edição."}
+              </CardDescription>
+            </CardHeader>
 
-          {canCreateRequests ? (
+            {canCreateRequests ? (
             <form onSubmit={submitRequest}>
               <CardContent className="flex flex-col gap-4">
                 <FieldGroup>
@@ -393,7 +397,7 @@ export function Solicitacoes({ currentUser }: SolicitacoesProps) {
                 </Button>
               </CardFooter>
             </form>
-          ) : canEditRequests && editingRequest ? (
+          ) : editingRequest ? (
             <form onSubmit={submitRequestEdit}>
               <CardContent className="flex flex-col gap-4">
                 <FieldGroup>
@@ -500,24 +504,9 @@ export function Solicitacoes({ currentUser }: SolicitacoesProps) {
                 </Button>
               </CardFooter>
             </form>
-          ) : (
-            <CardContent className="flex flex-col gap-4">
-              <div className="rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
-                {canUpdateStatus
-                  ? "Atualize o andamento das solicitações recebidas e mantenha o histórico sempre rastreável."
-                  : canEditRequests
-                    ? "Use o ícone de edição na lista para corrigir solicitações e registrar o motivo."
-                    : "Use esta área para acompanhar solicitações abertas, em atendimento e concluídas."}
-              </div>
-
-              {feedback && (
-                <div className="rounded-lg border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-                  {feedback}
-                </div>
-              )}
-            </CardContent>
-          )}
-        </Card>
+          ) : null}
+          </Card>
+        ) : null}
 
         <Card className="rounded-lg">
           <CardHeader>
@@ -541,7 +530,7 @@ export function Solicitacoes({ currentUser }: SolicitacoesProps) {
                     <TableHead>Contrato</TableHead>
                     <TableHead>Data</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Histórico</TableHead>
+                    {!canUpdateStatus && <TableHead>Histórico</TableHead>}
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -566,31 +555,33 @@ export function Solicitacoes({ currentUser }: SolicitacoesProps) {
                           {statusLabelByValue[request.status]}
                         </Badge>
                       </TableCell>
-                      <TableCell className="max-w-sm align-top">
-                        <div className="flex flex-col gap-2 text-xs text-muted-foreground">
-                          {request.history.map((entry) => (
-                            <div
-                              key={entry.id}
-                              className="rounded-lg border bg-muted/20 p-2"
-                            >
-                              <p className="font-medium text-foreground">
-                                {entry.action}
-                              </p>
-                              <p>
-                                {entry.fromStatus
-                                  ? `${statusLabelByValue[entry.fromStatus]} -> `
-                                  : ""}
-                                {statusLabelByValue[entry.toStatus]}
-                              </p>
-                              {entry.note && <p>Nota: {entry.note}</p>}
-                              <p>
-                                {getUserById(entry.changedByUserId ?? "")?.name ??
-                                  getProfileLabel(entry.changedByProfile)}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-                      </TableCell>
+                      {!canUpdateStatus && (
+                        <TableCell className="max-w-sm align-top">
+                          <div className="flex flex-col gap-2 text-xs text-muted-foreground">
+                            {request.history.map((entry) => (
+                              <div
+                                key={entry.id}
+                                className="rounded-lg border bg-muted/20 p-2"
+                              >
+                                <p className="font-medium text-foreground">
+                                  {entry.action}
+                                </p>
+                                <p>
+                                  {entry.fromStatus
+                                    ? `${statusLabelByValue[entry.fromStatus]} -> `
+                                    : ""}
+                                  {statusLabelByValue[entry.toStatus]}
+                                </p>
+                                {entry.note && <p>Nota: {entry.note}</p>}
+                                <p>
+                                  {getUserById(entry.changedByUserId ?? "")?.name ??
+                                    getProfileLabel(entry.changedByProfile)}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        </TableCell>
+                      )}
                       <TableCell className="align-top">
                         <div className="flex min-w-72 flex-col gap-2">
                           {canEditRequests && (

@@ -26,6 +26,7 @@ import {
   type DailyExecution,
   type DailyExecutionItem,
 } from "@/lib/daily-executions"
+import { formatDateBR, formatDateTimeBR } from "@/lib/dates"
 import { hasCapability } from "@/lib/permissions"
 import type { AppUser } from "@/lib/profile"
 import { cn } from "@/lib/utils"
@@ -399,7 +400,7 @@ export function Revisao({ currentUser }: RevisaoProps) {
                         <p className="mt-1 text-sm text-muted-foreground">
                           {contract?.name ?? "Contrato não encontrado"} ·{" "}
                           {contract?.client ?? "Cliente não encontrado"} ·{" "}
-                          {execution.date}
+                          {formatDateBR(execution.date)}
                         </p>
                       </div>
 
@@ -551,7 +552,7 @@ export function Revisao({ currentUser }: RevisaoProps) {
                               </p>
                               <p>Motivo: {entry.reason}</p>
                               <p>
-                                Data: {entry.changedAt.slice(0, 16).replace("T", " ")}
+                                Data: {formatDateTimeBR(entry.changedAt)}
                               </p>
                             </div>
                           ))}

@@ -1,3 +1,4 @@
+import { normalizeDateForInput } from "@/lib/dates"
 import { getUsersByProfile, type AppUser } from "@/lib/profile"
 
 export type ContractStatus = "ativo" | "pausado" | "encerrado"
@@ -207,8 +208,8 @@ export function loadContracts(): Contract[] {
           contract.deadlineUnit === "semana" || contract.deadlineUnit === "mes"
             ? contract.deadlineUnit
             : "dia",
-        startDate: contract.startDate ?? "",
-        expectedEndDate: contract.expectedEndDate ?? "",
+        startDate: normalizeDateForInput(contract.startDate),
+        expectedEndDate: normalizeDateForInput(contract.expectedEndDate),
         status: contract.status ?? "ativo",
         team: contract.team ?? "",
         employeeCount:
