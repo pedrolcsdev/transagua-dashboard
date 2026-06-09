@@ -169,7 +169,7 @@ export function Relatorios({ currentUser }: RelatoriosProps) {
         description="Filtre contratos, períodos, serviços e status para acompanhar metas, realizado, revisão gerencial e situação do efetivo."
       />
 
-      <Card className="rounded-lg border-[#d7e5e5] shadow-[0_12px_36px_rgba(12,55,56,0.06)]">
+      <Card className="rounded-lg border-[var(--border-color)] shadow-[0_12px_36px_rgba(12,55,56,0.06)]">
         <CardHeader>
           <CardTitle>Filtros</CardTitle>
           <CardDescription>Refine a visão do relatório operacional.</CardDescription>
@@ -292,7 +292,7 @@ export function Relatorios({ currentUser }: RelatoriosProps) {
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[1fr_1fr]">
-        <Card className="rounded-lg border-[#d7e5e5] shadow-[0_12px_36px_rgba(12,55,56,0.06)]">
+        <Card className="rounded-lg border-[var(--border-color)] shadow-[0_12px_36px_rgba(12,55,56,0.06)]">
           <CardHeader>
             <CardTitle>Status dos lançamentos</CardTitle>
             <CardDescription>Distribuição por faixa de meta</CardDescription>
@@ -302,7 +302,7 @@ export function Relatorios({ currentUser }: RelatoriosProps) {
           </CardContent>
         </Card>
 
-        <Card className="rounded-lg border-[#d7e5e5] shadow-[0_12px_36px_rgba(12,55,56,0.06)]">
+        <Card className="rounded-lg border-[var(--border-color)] shadow-[0_12px_36px_rgba(12,55,56,0.06)]">
           <CardHeader>
             <CardTitle>Realizado por serviço</CardTitle>
             <CardDescription>Serviços com produção no filtro atual</CardDescription>
@@ -321,7 +321,7 @@ export function Relatorios({ currentUser }: RelatoriosProps) {
         </Card>
       </section>
 
-      <Card className="rounded-lg border-[#d7e5e5] shadow-[0_12px_36px_rgba(12,55,56,0.06)]">
+      <Card className="rounded-lg border-[var(--border-color)] shadow-[0_12px_36px_rgba(12,55,56,0.06)]">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <ClipboardList />

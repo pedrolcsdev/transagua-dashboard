@@ -115,7 +115,7 @@ export function Testes({ currentUser }: TestesProps) {
           <p className="text-sm font-medium text-muted-foreground">
             Ambiente de simulacao
           </p>
-          <h2 className="text-2xl font-semibold text-[#102f31]">Testes</h2>
+          <h2 className="text-2xl font-semibold text-[var(--text-primary)]">Testes</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
             Gere uma massa operacional completa para ver a plataforma como se ja
             estivesse em uso: contratos, produtividade diaria, efetivo,
@@ -123,17 +123,17 @@ export function Testes({ currentUser }: TestesProps) {
           </p>
         </div>
 
-        <Badge className="w-fit border-[#d7edf2] bg-[#eef8fb] text-[#087fca]">
+        <Badge className="w-fit border-[var(--border-color)] bg-[var(--accent-soft)] text-[var(--accent-color)]">
           Coordenador
         </Badge>
       </section>
 
       <SummaryGrid summary={activeSummary} />
 
-      <Card className="rounded-lg border-[#d7e5e5] shadow-[0_12px_36px_rgba(12,55,56,0.06)]">
+      <Card className="rounded-lg border-[var(--border-color)] shadow-[0_12px_36px_rgba(12,55,56,0.06)]">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <FlaskConical className="size-5 text-[#087fca]" />
+            <FlaskConical className="size-5 text-[var(--accent-color)]" />
             Massa de dados ficticia
           </CardTitle>
           <CardDescription>
@@ -152,7 +152,7 @@ export function Testes({ currentUser }: TestesProps) {
             </div>
           </div>
 
-          <div className="rounded-lg border bg-white p-4">
+          <div className="rounded-lg border bg-[var(--card-bg)] p-4">
             <h3 className="text-sm font-semibold">Depois de gerar</h3>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <Button type="button" variant="outline" onClick={() => navigate("/dashboard")}>

@@ -24,7 +24,7 @@ export function MetricBar({
   return (
     <div className="h-2 overflow-hidden rounded-full bg-muted">
       <div
-        className={cn("h-full rounded-full bg-[#0f7772]", className)}
+        className={cn("h-full rounded-full bg-[var(--accent-color)]", className)}
         style={{ width: `${width}%` }}
       />
     </div>
@@ -47,7 +47,7 @@ export function HorizontalBarChart({ items }: { items: BarChartItem[] }) {
             </div>
             <div className="h-3 overflow-hidden rounded-full bg-muted">
               <div
-                className="h-full rounded-full bg-[#0f7772]"
+                className="h-full rounded-full bg-[var(--accent-color)]"
                 style={{ width: `${Math.max(width, 4)}%` }}
               />
             </div>

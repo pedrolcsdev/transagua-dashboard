@@ -312,7 +312,7 @@ export function Revisao({ currentUser }: RevisaoProps) {
           <p className="text-sm font-medium text-muted-foreground">
             Conferência gerencial
           </p>
-          <h2 className="text-2xl font-semibold text-[#102f31]">Revisão</h2>
+          <h2 className="text-2xl font-semibold text-[var(--text-primary)]">Revisão</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
             Corrija produtividade, registre justificativas e mantenha histórico
             auditável das alterações feitas pelo Gestor.

@@ -3,8 +3,10 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleHelp,
+  Moon,
   PanelLeftClose,
   PanelLeftOpen,
+  Sun,
   X,
 } from "lucide-react"
 import { NavLink } from "react-router-dom"
@@ -22,6 +24,8 @@ type SidebarProps = {
   onNavigate?: () => void
   onClose?: () => void
   onToggleCollapse?: () => void
+  isDarkMode: boolean
+  onToggleTheme: () => void
 }
 
 export function Sidebar({
@@ -31,6 +35,8 @@ export function Sidebar({
   onNavigate,
   onClose,
   onToggleCollapse,
+  isDarkMode,
+  onToggleTheme,
 }: SidebarProps) {
   const navigation = navigationByProfile[profile]
   const isDesktop = mode === "desktop"
@@ -39,7 +45,7 @@ export function Sidebar({
   return (
     <div
       className={cn(
-        "flex h-full min-h-[32rem] flex-col border border-white/80 bg-[#f8fafc] text-[#101820] shadow-[0_24px_70px_rgba(15,23,42,0.18)] transition-all duration-300",
+        "flex h-full min-h-[32rem] flex-col border border-[var(--border-color)] bg-[var(--sidebar)] text-[var(--sidebar-foreground)] shadow-[0_24px_70px_var(--shadow-color)] transition-all duration-300",
         isDesktop ? "rounded-2xl p-2" : "rounded-[1.75rem] p-3",
         collapsed && isDesktop ? "items-center" : ""
       )}
@@ -63,8 +69,8 @@ export function Sidebar({
             variant="ghost"
             size="icon"
             className={cn(
-              "size-9 shrink-0 rounded-xl text-[#111] hover:bg-[#edf4f5]",
-              collapsed && "bg-white shadow-[0_8px_18px_rgba(15,23,42,0.05)]"
+              "size-9 shrink-0 rounded-xl text-[var(--text-primary)] hover:bg-[var(--accent-soft)]",
+              collapsed && "bg-[var(--bg-elevated)] shadow-[0_8px_18px_var(--shadow-color)]"
             )}
             onClick={onToggleCollapse}
             aria-label={collapsed ? "Expandir navegação" : "Recolher navegação"}
@@ -77,7 +83,7 @@ export function Sidebar({
             type="button"
             variant="ghost"
             size="icon"
-            className="size-9 rounded-2xl text-[#111] hover:bg-[#edf4f5]"
+            className="size-9 rounded-2xl text-[var(--text-primary)] hover:bg-[var(--accent-soft)]"
             onClick={onClose}
             aria-label="Fechar navegação"
           >
@@ -87,8 +93,8 @@ export function Sidebar({
       </div>
 
       {!collapsed && (
-        <div className="mb-5 rounded-2xl border border-[#e5ecef] bg-white px-3 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.05)]">
-          <p className="text-xs font-medium uppercase tracking-wide text-[#6b7475]">
+        <div className="mb-5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-3 shadow-[0_12px_28px_var(--shadow-color)]">
+          <p className="text-xs font-medium uppercase tracking-wide text-[var(--text-secondary)]">
             Perfil ativo
           </p>
           <p className="text-sm font-bold">{getProfileLabel(profile)}</p>
@@ -111,12 +117,12 @@ export function Sidebar({
               aria-label={item.label}
               className={({ isActive }) =>
                 cn(
-                  "flex h-12 items-center gap-4 rounded-xl text-sm font-semibold text-[#46575c] transition hover:bg-white hover:text-[#057f97] focus-visible:ring-2 focus-visible:ring-[#0799b5] active:translate-y-px",
+                  "flex h-12 items-center gap-4 rounded-xl text-sm font-semibold text-[var(--text-secondary)] transition hover:bg-[var(--bg-elevated)] hover:text-[var(--accent-color)] focus-visible:ring-2 focus-visible:ring-[var(--nav-active)] active:translate-y-px",
                   collapsed && isDesktop
                     ? "w-12 justify-center px-0"
                     : "w-full px-3",
                   isActive &&
-                    "bg-[#0799b5] text-white shadow-[0_12px_30px_rgba(7,153,181,0.22)] hover:bg-[#0799b5] hover:text-white"
+                    "bg-[var(--nav-active)] text-[var(--accent-contrast)] shadow-[0_12px_30px_rgba(7,153,181,0.22)] hover:bg-[var(--nav-active)] hover:text-[var(--accent-contrast)]"
                 )
               }
             >
@@ -133,11 +139,61 @@ export function Sidebar({
           collapsed && isDesktop && "items-center"
         )}
       >
+        <button
+          type="button"
+          role="switch"
+          aria-checked={isDarkMode}
+          aria-label="Modo escuro"
+          title={isDarkMode ? "Modo escuro ativado" : "Modo claro ativado"}
+          onClick={onToggleTheme}
+          className={cn(
+            "flex h-12 items-center rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] text-sm font-medium text-[var(--text-primary)] shadow-[0_8px_18px_var(--shadow-color)] transition hover:border-[var(--accent-color)] hover:bg-[var(--accent-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-color)]",
+            collapsed && isDesktop
+              ? "w-12 justify-center px-0"
+              : "w-full justify-between gap-3 px-3"
+          )}
+        >
+          {!collapsed && (
+            <span className="flex items-center gap-3">
+              {isDarkMode ? (
+                <Moon className="size-5 stroke-[2.4] text-[var(--accent-color)]" />
+              ) : (
+                <Sun className="size-5 stroke-[2.4] text-[var(--accent-color)]" />
+              )}
+              <span>Modo escuro</span>
+            </span>
+          )}
+          {collapsed && isDesktop ? (
+            isDarkMode ? (
+              <Moon className="size-5 stroke-[2.4] text-[var(--accent-color)]" />
+            ) : (
+              <Sun className="size-5 stroke-[2.4] text-[var(--accent-color)]" />
+            )
+          ) : (
+            <span
+              className={cn(
+                "relative h-6 w-11 rounded-full border border-[var(--border-color)] bg-[var(--bg-secondary)] p-0.5 transition-colors duration-300",
+                isDarkMode && "bg-[var(--accent-soft-strong)]"
+              )}
+              aria-hidden="true"
+            >
+              <span
+                className={cn(
+                  "flex size-5 items-center justify-center rounded-full bg-[var(--accent-color)] text-[var(--accent-contrast)] shadow-sm transition-transform duration-300 ease-out",
+                  isDarkMode ? "translate-x-5" : "translate-x-0"
+                )}
+              >
+                {isDarkMode ? <Moon className="size-3.5" /> : <Sun className="size-3.5" />}
+              </span>
+            </span>
+          )}
+        </button>
+
         <Button
           type="button"
           variant="ghost"
           className={cn(
-            "h-12 rounded-xl text-sm font-medium text-[#46575c] hover:bg-white",
+            "h-12 rounded-xl text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]",
             collapsed && isDesktop
               ? "w-12 justify-center px-0"
               : "w-full justify-start gap-4 px-3"
@@ -152,7 +208,7 @@ export function Sidebar({
           type="button"
           variant="ghost"
           className={cn(
-            "h-12 rounded-xl text-sm font-medium text-[#46575c] hover:bg-white",
+            "h-12 rounded-xl text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]",
             collapsed && isDesktop
               ? "w-12 justify-center px-0"
               : "w-full justify-start gap-4 px-3"
@@ -170,7 +226,7 @@ export function Sidebar({
             variant="ghost"
             size={collapsed ? "icon" : "default"}
             className={cn(
-              "mt-1 h-10 rounded-xl text-xs text-[#667b80] hover:bg-white",
+              "mt-1 h-10 rounded-xl text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]",
               collapsed ? "w-12" : "w-full justify-start gap-2 px-3"
             )}
             onClick={onToggleCollapse}

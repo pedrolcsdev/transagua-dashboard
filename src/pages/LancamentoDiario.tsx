@@ -336,7 +336,7 @@ export function LancamentoDiario({ currentUser }: LancamentoDiarioProps) {
           <p className="text-sm font-medium text-muted-foreground">
             Execução de campo
           </p>
-          <h2 className="text-2xl font-semibold text-[#102f31]">
+          <h2 className="text-2xl font-semibold text-[var(--text-primary)]">
             Lançamento Diário
           </h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">

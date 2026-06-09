@@ -513,7 +513,7 @@ export function Contratos({ currentUser }: ContratosProps) {
           <p className="text-sm font-medium text-muted-foreground">
             Gestão operacional
           </p>
-          <h2 className="text-2xl font-semibold text-[#102f31]">Contratos</h2>
+          <h2 className="text-2xl font-semibold text-[var(--text-primary)]">Contratos</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
             O Coordenador define prazo, metas, equipe, Gestor e Líder
             responsáveis. Cada perfil acompanha apenas as obras atribuídas.
@@ -543,7 +543,7 @@ export function Contratos({ currentUser }: ContratosProps) {
       </section>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <Card className="rounded-lg border-[#d7e5e5] shadow-[0_12px_36px_rgba(12,55,56,0.06)]">
+        <Card className="rounded-lg border-[var(--border-color)] shadow-[0_12px_36px_rgba(12,55,56,0.06)]">
           <CardHeader>
             <CardTitle>Lista de contratos</CardTitle>
             <CardDescription>
@@ -675,7 +675,7 @@ export function Contratos({ currentUser }: ContratosProps) {
           </CardContent>
         </Card>
 
-        <Card className="rounded-lg border-[#d7e5e5] shadow-[0_12px_36px_rgba(12,55,56,0.06)] xl:sticky xl:top-24 xl:self-start">
+        <Card className="rounded-lg border-[var(--border-color)] shadow-[0_12px_36px_rgba(12,55,56,0.06)] xl:sticky xl:top-24 xl:self-start">
           <CardHeader>
             <CardTitle>
               {canManageContracts

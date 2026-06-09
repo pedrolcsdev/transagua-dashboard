@@ -439,8 +439,8 @@ export function Dashboard({ currentUser }: DashboardProps) {
 
   return (
     <div className="flex flex-col gap-4">
-      <section className="overflow-hidden rounded-2xl border border-[#dfe8ea] bg-white shadow-[0_18px_42px_-32px_rgba(15,23,42,0.35)]">
-        <div className="grid gap-4 border-b border-[#e5ecef] px-5 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+      <section className="overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--card-bg)] shadow-[0_18px_42px_-32px_rgba(15,23,42,0.35)]">
+        <div className="grid gap-4 border-b border-[var(--border-subtle)] px-5 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <Badge
@@ -449,20 +449,20 @@ export function Dashboard({ currentUser }: DashboardProps) {
               >
                 {operationStatusLabels[data.operationStatus]}
               </Badge>
-              <p className="text-sm font-medium text-[#667b80]">
+              <p className="text-sm font-medium text-[var(--text-secondary)]">
                 Painel operacional · {periodLabel}
               </p>
             </div>
-            <h1 className="mt-3 max-w-5xl text-2xl font-semibold leading-tight tracking-tight text-[#101820] md:text-3xl">
+            <h1 className="mt-3 max-w-5xl text-2xl font-semibold leading-tight tracking-tight text-[var(--text-primary)] md:text-3xl">
               {data.operationSummary}
             </h1>
-            <p className="mt-2 text-sm text-[#667b80]">
+            <p className="mt-2 text-sm text-[var(--text-secondary)]">
               Olá, {currentUser.name}. Priorize os contratos com atraso,
               execução abaixo da meta e efetivo diferente do planejado.
             </p>
           </div>
 
-          <div className="flex w-fit items-center gap-1 rounded-xl border border-[#e5ecef] bg-[#f6f8fb] p-1">
+          <div className="flex w-fit items-center gap-1 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-primary)] p-1">
             {(["today", "week", "total"] as const).map((option) => (
               <button
                 key={option}
@@ -471,8 +471,8 @@ export function Dashboard({ currentUser }: DashboardProps) {
                 className={cn(
                   "h-8 rounded-lg px-3 text-xs font-semibold transition active:translate-y-px",
                   period === option
-                    ? "bg-[#101820] text-white shadow-[0_8px_18px_rgba(16,24,32,0.18)]"
-                    : "text-[#667b80] hover:bg-white hover:text-[#102f31]"
+                    ? "bg-[var(--accent-color)] text-[var(--accent-contrast)] shadow-[0_8px_18px_var(--shadow-color)]"
+                    : "text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
                 )}
               >
                 {option === "today"
@@ -485,7 +485,7 @@ export function Dashboard({ currentUser }: DashboardProps) {
           </div>
         </div>
 
-        <div className="grid gap-px bg-[#e5ecef] md:grid-cols-2 xl:grid-cols-5">
+        <div className="grid gap-px bg-[var(--border-subtle)] md:grid-cols-2 xl:grid-cols-5">
           <MetricCard
             title="Contratos atrasados"
             description={`${data.actionRequiredContracts} ${pluralize(
@@ -544,18 +544,18 @@ export function Dashboard({ currentUser }: DashboardProps) {
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.35fr_0.65fr]">
-        <Card className="border-[#dfe8ea] bg-white shadow-[0_18px_42px_-32px_rgba(15,23,42,0.35)]">
-          <CardHeader className="grid gap-2 border-b border-[#e5ecef] sm:grid-cols-[1fr_auto] sm:items-start">
+        <Card className="border-[var(--border-color)] bg-[var(--card-bg)] shadow-[0_18px_42px_-32px_rgba(15,23,42,0.35)]">
+          <CardHeader className="grid gap-2 border-b border-[var(--border-subtle)] sm:grid-cols-[1fr_auto] sm:items-start">
             <div>
-              <CardTitle className="flex items-center gap-2 text-base text-[#101820]">
-                <AlertTriangle className="size-5 text-[#087fca]" />
+              <CardTitle className="flex items-center gap-2 text-base text-[var(--text-primary)]">
+                <AlertTriangle className="size-5 text-[var(--accent-color)]" />
                 Atenção imediata
               </CardTitle>
-              <CardDescription className="text-[#667b80]">
+              <CardDescription className="text-[var(--text-secondary)]">
                 Prioridades ranqueadas por atraso, meta, efetivo e solicitações.
               </CardDescription>
             </div>
-            <Badge className="w-fit border-[#d7edf2] bg-[#eef8fb] text-[#087fca]">
+            <Badge className="w-fit border-[var(--border-color)] bg-[var(--accent-soft)] text-[var(--accent-color)]">
               até {MAX_PRIORITIES} itens
             </Badge>
           </CardHeader>
@@ -570,17 +570,17 @@ export function Dashboard({ currentUser }: DashboardProps) {
               data.priorities.map((priority, index) => (
                 <div
                   key={priority.id}
-                  className="grid gap-3 rounded-xl border border-[#e5ecef] bg-[#f8fafc] p-3 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-start"
+                  className="grid gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-3 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-start"
                 >
-                  <span className="flex size-8 items-center justify-center rounded-lg bg-white font-mono text-sm font-semibold text-[#102f31] ring-1 ring-[#dfe8ea]">
+                  <span className="flex size-8 items-center justify-center rounded-lg bg-[var(--card-bg)] font-mono text-sm font-semibold text-[var(--text-primary)] ring-1 ring-[var(--border-color)]">
                     {index + 1}
                   </span>
                   <div className="min-w-0">
-                    <p className="truncate font-semibold text-[#101820]">
+                    <p className="truncate font-semibold text-[var(--text-primary)]">
                       {priority.title}
                     </p>
-                    <p className="text-xs text-[#667b80]">{priority.context}</p>
-                    <p className="mt-2 text-sm leading-relaxed text-[#32484c]">
+                    <p className="text-xs text-[var(--text-secondary)]">{priority.context}</p>
+                    <p className="mt-2 text-sm leading-relaxed text-[var(--text-primary)]">
                       {priority.reason}
                     </p>
                   </div>
@@ -599,30 +599,30 @@ export function Dashboard({ currentUser }: DashboardProps) {
           </CardContent>
         </Card>
 
-        <Card className="border-[#dfe8ea] bg-white shadow-[0_18px_42px_-32px_rgba(15,23,42,0.35)]">
-          <CardHeader className="border-b border-[#e5ecef]">
-            <CardTitle className="text-base text-[#101820]">
+        <Card className="border-[var(--border-color)] bg-[var(--card-bg)] shadow-[0_18px_42px_-32px_rgba(15,23,42,0.35)]">
+          <CardHeader className="border-b border-[var(--border-subtle)]">
+            <CardTitle className="text-base text-[var(--text-primary)]">
               Próxima ação sugerida
             </CardTitle>
-            <CardDescription className="text-[#667b80]">
+            <CardDescription className="text-[var(--text-secondary)]">
               Leitura resumida para orientar a coordenação.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3 pt-4">
             {data.priorities[0] ? (
               <>
-                <div className="rounded-xl border border-[#dfe8ea] bg-[#f8fafc] p-4">
-                  <p className="text-xs font-semibold uppercase text-[#667b80]">
+                <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] p-4">
+                  <p className="text-xs font-semibold uppercase text-[var(--text-secondary)]">
                     Priorizar agora
                   </p>
-                  <p className="mt-2 font-semibold text-[#101820]">
+                  <p className="mt-2 font-semibold text-[var(--text-primary)]">
                     {data.priorities[0].title}
                   </p>
-                  <p className="mt-2 text-sm leading-relaxed text-[#32484c]">
+                  <p className="mt-2 text-sm leading-relaxed text-[var(--text-primary)]">
                     {data.priorities[0].reason}
                   </p>
                 </div>
-                <p className="text-sm leading-relaxed text-[#667b80]">
+                <p className="text-sm leading-relaxed text-[var(--text-secondary)]">
                   A ordem considera desvio de cronograma, execução abaixo da
                   meta, efetivo e solicitações pendentes no mesmo contexto.
                 </p>
@@ -638,33 +638,33 @@ export function Dashboard({ currentUser }: DashboardProps) {
         </Card>
       </section>
 
-      <Card className="border-[#dfe8ea] bg-white shadow-[0_18px_42px_-32px_rgba(15,23,42,0.35)]">
-        <CardHeader className="grid gap-2 border-b border-[#e5ecef] sm:grid-cols-[1fr_auto] sm:items-start">
+      <Card className="border-[var(--border-color)] bg-[var(--card-bg)] shadow-[0_18px_42px_-32px_rgba(15,23,42,0.35)]">
+        <CardHeader className="grid gap-2 border-b border-[var(--border-subtle)] sm:grid-cols-[1fr_auto] sm:items-start">
           <div>
-            <CardTitle className="text-base text-[#101820]">
+            <CardTitle className="text-base text-[var(--text-primary)]">
               Ritmo da operação
             </CardTitle>
-            <CardDescription className="text-[#667b80]">
+            <CardDescription className="text-[var(--text-secondary)]">
               Contratos ativos mais fora do esperado, do maior atraso ao menor.
             </CardDescription>
           </div>
-          <Badge className="w-fit border-[#d7edf2] bg-[#eef8fb] text-[#087fca]">
+          <Badge className="w-fit border-[var(--border-color)] bg-[var(--accent-soft)] text-[var(--accent-color)]">
             {data.contractsOnTrack} de {data.activeContracts} no ritmo
           </Badge>
         </CardHeader>
         <CardContent className="grid gap-4 pt-4 lg:grid-cols-[0.9fr_1.1fr]">
-          <div className="rounded-xl border border-[#dfe8ea] bg-[#f8fafc] p-4">
-            <p className="text-sm text-[#667b80]">Resumo do ritmo</p>
-            <p className="mt-3 font-mono text-4xl font-semibold tracking-tight text-[#102f31]">
+          <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] p-4">
+            <p className="text-sm text-[var(--text-secondary)]">Resumo do ritmo</p>
+            <p className="mt-3 font-mono text-4xl font-semibold tracking-tight text-[var(--text-primary)]">
               {data.contractsOnTrack}/{data.activeContracts}
             </p>
-            <p className="mt-2 text-sm leading-relaxed text-[#667b80]">
+            <p className="mt-2 text-sm leading-relaxed text-[var(--text-secondary)]">
               Contratos ativos dentro do esperado contra o cronograma geral.
               Os desvios relevantes aparecem como prioridades quando combinados
               com meta, efetivo ou solicitações.
             </p>
           </div>
-          <div className="rounded-xl border border-[#dfe8ea] bg-[#f8fafc] p-4">
+          <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] p-4">
             {rhythmItems.length === 0 ? (
               <EmptyState
                 icon={Briefcase}

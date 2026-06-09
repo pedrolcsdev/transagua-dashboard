@@ -7,6 +7,9 @@ import { getPageTitle } from "@/lib/navigation"
 import type { AppUser, UserProfile } from "@/lib/profile"
 import { cn } from "@/lib/utils"
 
+const THEME_STORAGE_KEY = "transagua-theme"
+type ThemeMode = "light" | "dark"
+
 type AppShellProps = {
   user: AppUser
   profile: UserProfile
@@ -16,8 +19,19 @@ type AppShellProps = {
 export function AppShell({ user, profile, onUserChange }: AppShellProps) {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
+    return localStorage.getItem(THEME_STORAGE_KEY) === "dark" ? "dark" : "light"
+  })
   const location = useLocation()
   const pageTitle = getPageTitle(location.pathname)
+  const isDarkMode = themeMode === "dark"
+
+  useEffect(() => {
+    // The html class lets every component consume the same CSS variable theme.
+    document.documentElement.classList.toggle("dark-mode", isDarkMode)
+    document.documentElement.classList.toggle("dark", isDarkMode)
+    localStorage.setItem(THEME_STORAGE_KEY, themeMode)
+  }, [isDarkMode, themeMode])
 
   useEffect(() => {
     if (!isMobileSidebarOpen) {
@@ -35,7 +49,7 @@ export function AppShell({ user, profile, onUserChange }: AppShellProps) {
   }, [isMobileSidebarOpen])
 
   return (
-    <div className="min-h-svh bg-[#f6f8fb] text-[#172426]">
+    <div className="min-h-svh bg-[var(--bg-primary)] text-[var(--text-primary)]">
       <div className="flex min-h-svh">
         <aside
           className={cn(
@@ -47,6 +61,12 @@ export function AppShell({ user, profile, onUserChange }: AppShellProps) {
             profile={profile}
             collapsed={isSidebarCollapsed}
             mode="desktop"
+            isDarkMode={isDarkMode}
+            onToggleTheme={() =>
+              setThemeMode((currentMode) =>
+                currentMode === "dark" ? "light" : "dark"
+              )
+            }
             onToggleCollapse={() =>
               setIsSidebarCollapsed((currentValue) => !currentValue)
             }
@@ -71,7 +91,7 @@ export function AppShell({ user, profile, onUserChange }: AppShellProps) {
 
       <div
         className={cn(
-          "fixed inset-0 z-40 bg-[#111827]/45 opacity-0 backdrop-blur-[2px] transition-opacity duration-300 ease-out lg:hidden",
+          "fixed inset-0 z-40 bg-black/50 opacity-0 backdrop-blur-[2px] transition-opacity duration-300 ease-out lg:hidden",
           isMobileSidebarOpen
             ? "pointer-events-auto opacity-100"
             : "pointer-events-none"
@@ -92,6 +112,12 @@ export function AppShell({ user, profile, onUserChange }: AppShellProps) {
         <Sidebar
           profile={profile}
           mode="drawer"
+          isDarkMode={isDarkMode}
+          onToggleTheme={() =>
+            setThemeMode((currentMode) =>
+              currentMode === "dark" ? "light" : "dark"
+            )
+          }
           onNavigate={() => setIsMobileSidebarOpen(false)}
           onClose={() => setIsMobileSidebarOpen(false)}
         />
