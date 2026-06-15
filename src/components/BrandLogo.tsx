@@ -11,6 +11,8 @@ export function BrandLogo({ className }: BrandLogoProps) {
     <img
       src={transaguaLogoUrl}
       alt="Transágua"
+      width={157}
+      height={56}
       className={cn("h-11 w-auto object-contain", className)}
     />
   )

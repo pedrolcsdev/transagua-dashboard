@@ -13,6 +13,7 @@ export type AppUser = {
 
 export const USER_STORAGE_KEY = "transagua:user"
 export const PROFILE_STORAGE_KEY = "transagua:profile"
+export const AUTH_STORAGE_KEY = "transagua:authenticated"
 export const DEFAULT_USER_ID = "manager-ana"
 export const DEFAULT_PROFILE: UserProfile = "manager"
 

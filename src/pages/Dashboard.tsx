@@ -1,17 +1,16 @@
 import { useMemo, useState } from "react"
 import {
   AlertTriangle,
-  Briefcase,
   CheckCircle2,
-  ClipboardList,
-  Gauge,
+  Clock3,
+  ListChecks,
   PackageOpen,
-  TrendingDown,
+  RefreshCw,
+  ShieldCheck,
+  Truck,
   Users,
 } from "lucide-react"
 
-import { MetricCard } from "@/components/MetricCard"
-import { HorizontalBarChart } from "@/components/SimpleCharts"
 import { EmptyState } from "@/components/StateViews"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -56,6 +55,7 @@ type DashboardProps = {
 type DashboardPeriod = "today" | "week" | "total"
 type OperationStatus = "critical" | "attention" | "stable"
 type PriorityStatus = "critical" | "attention" | "pending"
+type HealthStatus = "healthy" | "attention" | "critical" | "no-data"
 
 type PriorityItem = {
   id: string
@@ -74,6 +74,18 @@ type ContractDecisionSnapshot = {
   score: number
   status: PriorityStatus
   reasons: string[]
+}
+
+type ContractHealthItem = {
+  contract: Contract
+  status: HealthStatus
+}
+
+type LogisticPendingItem = {
+  request: OperationalRequest
+  contract?: Contract
+  dueLabel: string
+  dueTone: "danger" | "warning" | "neutral"
 }
 
 const operationStatusClassNames: Record<OperationStatus, string> = {
@@ -98,6 +110,26 @@ const priorityStatusLabels: Record<PriorityStatus, string> = {
   critical: "Crítico",
   attention: "Atenção",
   pending: "Pendente",
+}
+
+const healthLabels: Record<HealthStatus, string> = {
+  healthy: "Saudáveis",
+  attention: "Atenção",
+  critical: "Críticos",
+  "no-data": "Sem dados",
+}
+
+const healthClassNames: Record<HealthStatus, string> = {
+  healthy: "bg-emerald-500",
+  attention: "bg-amber-400",
+  critical: "bg-red-500",
+  "no-data": "bg-slate-300",
+}
+
+const dueToneClassNames: Record<LogisticPendingItem["dueTone"], string> = {
+  danger: "border-red-200 bg-red-50 text-red-700",
+  warning: "border-amber-200 bg-amber-50 text-amber-700",
+  neutral: "border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-primary)]",
 }
 
 function isInPeriod(dateValue: string, period: DashboardPeriod) {
@@ -155,6 +187,64 @@ function joinReasons(reasons: string[]) {
 
 function getContractDisplayContext(contract: Contract) {
   return contract.team ? `${contract.team} · ${contract.client}` : contract.client
+}
+
+function getDueStatus(dateValue: string): LogisticPendingItem["dueLabel"] {
+  const today = new Date()
+  const todayStart = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate()
+  )
+  const dueDate = new Date(`${dateValue}T00:00:00`)
+  const diffDays = Math.ceil(
+    (dueDate.getTime() - todayStart.getTime()) / 86_400_000
+  )
+
+  if (Number.isNaN(dueDate.getTime())) {
+    return "Sem data"
+  }
+
+  if (diffDays < 0) {
+    return `${Math.abs(diffDays)} ${pluralize(Math.abs(diffDays), "dia", "dias")} em atraso`
+  }
+
+  if (diffDays === 0) {
+    return "Entrega hoje"
+  }
+
+  if (diffDays === 1) {
+    return "Entrega amanhã"
+  }
+
+  return `Entrega em ${diffDays} dias`
+}
+
+function getDueTone(dateValue: string): LogisticPendingItem["dueTone"] {
+  const today = new Date()
+  const todayStart = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate()
+  )
+  const dueDate = new Date(`${dateValue}T00:00:00`)
+  const diffDays = Math.ceil(
+    (dueDate.getTime() - todayStart.getTime()) / 86_400_000
+  )
+
+  if (Number.isNaN(dueDate.getTime())) {
+    return "neutral"
+  }
+
+  if (diffDays <= 1) {
+    return "danger"
+  }
+
+  if (diffDays <= 3) {
+    return "warning"
+  }
+
+  return "neutral"
 }
 
 function buildContractSnapshot(
@@ -341,6 +431,60 @@ function getDashboardData(currentUser: AppUser, period: DashboardPeriod) {
     .sort((a, b) => b.score - a.score)
     .slice(0, MAX_PRIORITIES)
 
+  const healthItems: ContractHealthItem[] = activeContracts.map((contract) => {
+    const summary = activeSummaries.find((item) => item.contract.id === contract.id)
+    const latestExecution = getLatestExecutionForContract(contract.id, allExecutions)
+    const snapshot = contractSnapshots.find(
+      (item) => item.summary.contract.id === contract.id
+    )
+
+    if (!summary || !latestExecution) {
+      return { contract, status: "no-data" }
+    }
+
+    if (
+      summary.progressGap <= CRITICAL_PROGRESS_GAP ||
+      snapshot?.status === "critical"
+    ) {
+      return { contract, status: "critical" }
+    }
+
+    if (
+      summary.progressGap < -DASHBOARD_TOLERANCE ||
+      snapshot?.status === "attention" ||
+      snapshot?.status === "pending"
+    ) {
+      return { contract, status: "attention" }
+    }
+
+    return { contract, status: "healthy" }
+  })
+
+  const healthCounts = healthItems.reduce<Record<HealthStatus, number>>(
+    (totals, item) => ({
+      ...totals,
+      [item.status]: totals[item.status] + 1,
+    }),
+    {
+      healthy: 0,
+      attention: 0,
+      critical: 0,
+      "no-data": 0,
+    }
+  )
+
+  const pendingLogistics: LogisticPendingItem[] = requests
+    .filter((request) => request.status === "pendente")
+    .slice()
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(0, 4)
+    .map((request) => ({
+      request,
+      contract: contracts.find((contract) => contract.id === request.contractId),
+      dueLabel: getDueStatus(request.date),
+      dueTone: getDueTone(request.date),
+    }))
+
   const contractsOnTrack = Math.max(
     0,
     activeContracts.length - delayedContracts.length
@@ -349,6 +493,17 @@ function getDashboardData(currentUser: AppUser, period: DashboardPeriod) {
   const workforceImpactCount = workforceDivergenceContracts.filter((contract) =>
     delayedContractIds.has(contract.id)
   ).length
+  const latestExecutionDate = allExecutions
+    .map((execution) => execution.date)
+    .filter(Boolean)
+    .sort()
+    .at(-1)
+  const pendingReviewItems = periodExecutions.reduce(
+    (total, execution) =>
+      total +
+      execution.items.filter((item) => !item.reviewCompleted).length,
+    0
+  )
 
   const operationStatus: OperationStatus =
     criticalDelayedContracts.length > 0 || actionRequiredContracts > 0
@@ -402,7 +557,11 @@ function getDashboardData(currentUser: AppUser, period: DashboardPeriod) {
     contractsOnTrack,
     priorities,
     contractSnapshots,
+    healthCounts,
+    pendingLogistics,
     largestImpact,
+    latestExecutionDate,
+    pendingReviewItems,
     operationStatus,
     operationSummary,
   }
@@ -422,177 +581,243 @@ export function Dashboard({ currentUser }: DashboardProps) {
         ? "últimos 7 dias"
         : "total"
 
-  const rhythmItems = data.summaries
-    .filter((summary) => summary.contract.status === "ativo")
-    .slice()
-    .sort((a, b) => a.progressGap - b.progressGap)
-    .slice(0, 5)
-    .map((summary) => ({
-      label: summary.contract.name,
-      value: Math.max(0, Math.min(100, summary.percentExecuted)),
-      helper: `${numberFormatter.format(summary.percentExecuted)}% executado · ${numberFormatter.format(summary.expectedProgress)}% esperado`,
-    }))
-
   const largestImpactText = data.largestImpact
     ? data.largestImpact.summary.contract.name
     : "sem impacto relevante"
+  const decisionPriorities = data.contractSnapshots.slice(0, MAX_PRIORITIES)
+  const totalHealthContracts = Math.max(data.activeContracts, 1)
+  const healthyPercentage = Math.round(
+    (data.healthCounts.healthy / totalHealthContracts) * 100
+  )
+  const hasActiveContracts = data.activeContracts > 0
+  const healthGradient = `conic-gradient(#10b981 0 ${data.healthCounts.healthy / totalHealthContracts * 100}%, #f59e0b ${data.healthCounts.healthy / totalHealthContracts * 100}% ${(data.healthCounts.healthy + data.healthCounts.attention) / totalHealthContracts * 100}%, #ef4444 ${(data.healthCounts.healthy + data.healthCounts.attention) / totalHealthContracts * 100}% ${(data.healthCounts.healthy + data.healthCounts.attention + data.healthCounts.critical) / totalHealthContracts * 100}%, #cbd5e1 ${(data.healthCounts.healthy + data.healthCounts.attention + data.healthCounts.critical) / totalHealthContracts * 100}% 100%)`
+  const topPriority = decisionPriorities[0]
 
   return (
     <div className="flex flex-col gap-4">
-      <section className="overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--card-bg)] shadow-[0_18px_42px_-32px_rgba(15,23,42,0.35)]">
-        <div className="grid gap-4 border-b border-[var(--border-subtle)] px-5 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
+      <section className="rounded-xl border border-[var(--border-color)] bg-[var(--card-bg)] px-4 py-4 shadow-[0_14px_34px_-30px_rgba(15,23,42,0.28)] md:px-5">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
+          <div>
+            <div className="flex flex-wrap items-center gap-2 text-sm text-[var(--text-secondary)]">
               <Badge
                 variant="outline"
                 className={operationStatusClassNames[data.operationStatus]}
               >
                 {operationStatusLabels[data.operationStatus]}
               </Badge>
-              <p className="text-sm font-medium text-[var(--text-secondary)]">
-                Painel operacional · {periodLabel}
-              </p>
+              <span className="font-medium">Dashboard operacional</span>
+              <span className="hidden text-[var(--text-muted)] sm:inline">•</span>
+              <span className="inline-flex items-center gap-1">
+                <RefreshCw className="size-3.5" aria-hidden="true" />
+                Atualizado em{" "}
+                {data.latestExecutionDate
+                  ? formatDateBR(data.latestExecutionDate)
+                  : "sem registro"}
+              </span>
             </div>
-            <h1 className="mt-3 max-w-5xl text-2xl font-semibold leading-tight tracking-tight text-[var(--text-primary)] md:text-3xl">
-              {data.operationSummary}
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--text-primary)] md:text-3xl">
+              Centro de decisão operacional
             </h1>
-            <p className="mt-2 text-sm text-[var(--text-secondary)]">
-              Olá, {currentUser.name}. Priorize os contratos com atraso,
-              execução abaixo da meta e efetivo diferente do planejado.
-            </p>
           </div>
 
-          <div className="flex w-fit items-center gap-1 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-primary)] p-1">
+          <div className="flex flex-wrap items-center gap-2">
             {(["today", "week", "total"] as const).map((option) => (
               <button
                 key={option}
                 type="button"
                 onClick={() => setPeriod(option)}
                 className={cn(
-                  "h-8 rounded-lg px-3 text-xs font-semibold transition active:translate-y-px",
+                  "h-9 rounded-lg border px-3 text-xs font-semibold transition active:translate-y-px",
                   period === option
-                    ? "bg-[var(--accent-color)] text-[var(--accent-contrast)] shadow-[0_8px_18px_var(--shadow-color)]"
-                    : "text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
+                    ? "border-[var(--accent-color)] bg-[var(--accent-color)] text-[var(--accent-contrast)]"
+                    : "border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                 )}
               >
                 {option === "today"
                   ? "Hoje"
                   : option === "week"
-                    ? "Semana"
+                    ? "7 dias"
                     : "Total"}
               </button>
             ))}
           </div>
         </div>
 
-        <div className="grid gap-px bg-[var(--border-subtle)] md:grid-cols-2 xl:grid-cols-5">
-          <MetricCard
-            title="Contratos atrasados"
-            description={`${data.actionRequiredContracts} ${pluralize(
-              data.actionRequiredContracts,
-              "exige ação imediata",
-              "exigem ação imediata"
-            )}`}
-            value={data.delayedContracts.length}
-            icon={TrendingDown}
-            tone={data.delayedContracts.length > 0 ? "danger" : "default"}
-            className="rounded-none border-0 shadow-none ring-0 hover:translate-y-0"
-          />
-
-          <MetricCard
-            title="Solicitações pendentes"
-            description={`${data.delayedRequests.length} vinculadas a contratos atrasados`}
-            value={data.pendingRequests}
-            icon={PackageOpen}
-            tone={data.pendingRequests > 0 ? "warning" : "default"}
-            className="rounded-none border-0 shadow-none ring-0 hover:translate-y-0"
-          />
-
-          <MetricCard
-            title="Efetivo diferente do planejado"
-            description={`Impacta ${data.workforceImpactCount} ${pluralize(
-              data.workforceImpactCount,
-              "contrato atrasado",
-              "contratos atrasados"
-            )}`}
-            value={data.workforceDivergenceContracts.length}
-            icon={Users}
-            tone={
-              data.workforceDivergenceContracts.length > 0 ? "warning" : "default"
-            }
-            className="rounded-none border-0 shadow-none ring-0 hover:translate-y-0"
-          />
-
-          <MetricCard
-            title="Equipes abaixo da meta"
-            description={`Maior impacto: ${largestImpactText}`}
-            value={data.contractsBelowGoal.length}
-            icon={ClipboardList}
-            tone={data.contractsBelowGoal.length > 0 ? "danger" : "default"}
-            className="rounded-none border-0 shadow-none ring-0 hover:translate-y-0"
-          />
-
-          <MetricCard
-            title="Ritmo da operação"
-            description={`${data.contractsOnTrack} no ritmo · ${data.delayedContracts.length} fora do esperado`}
-            value={`${data.contractsOnTrack}/${data.activeContracts}`}
-            icon={Gauge}
-            tone={data.delayedContracts.length > 0 ? "warning" : "positive"}
-            className="rounded-none border-0 shadow-none ring-0 hover:translate-y-0"
-          />
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <div
+            className={cn(
+              "rounded-lg border px-4 py-3",
+              data.healthCounts.critical > 0
+                ? "border-red-100 bg-red-50"
+                : "border-[var(--border-color)] bg-[var(--bg-secondary)]"
+            )}
+          >
+            <p
+              className={cn(
+                "flex items-center gap-2 text-xs font-semibold uppercase",
+                data.healthCounts.critical > 0
+                  ? "text-red-700"
+                  : "text-[var(--text-secondary)]"
+              )}
+            >
+              <AlertTriangle className="size-4" aria-hidden="true" />
+              Contratos críticos
+            </p>
+            <p
+              className={cn(
+                "mt-2 font-mono text-3xl font-semibold",
+                data.healthCounts.critical > 0
+                  ? "text-red-700"
+                  : "text-[var(--text-primary)]"
+              )}
+            >
+              {data.healthCounts.critical}
+            </p>
+            <p
+              className={cn(
+                "text-sm",
+                data.healthCounts.critical > 0
+                  ? "text-red-700/80"
+                  : "text-[var(--text-secondary)]"
+              )}
+            >
+              {data.actionRequiredContracts} com ação imediata
+            </p>
+          </div>
+          <div
+            className={cn(
+              "rounded-lg border px-4 py-3",
+              data.contractsBelowGoal.length > 0
+                ? "border-amber-100 bg-amber-50"
+                : "border-[var(--border-color)] bg-[var(--bg-secondary)]"
+            )}
+          >
+            <p
+              className={cn(
+                "flex items-center gap-2 text-xs font-semibold uppercase",
+                data.contractsBelowGoal.length > 0
+                  ? "text-amber-800"
+                  : "text-[var(--text-secondary)]"
+              )}
+            >
+              <Users className="size-4" aria-hidden="true" />
+              Equipes abaixo da meta
+            </p>
+            <p
+              className={cn(
+                "mt-2 font-mono text-3xl font-semibold",
+                data.contractsBelowGoal.length > 0
+                  ? "text-amber-800"
+                  : "text-[var(--text-primary)]"
+              )}
+            >
+              {data.contractsBelowGoal.length}
+            </p>
+            <p
+              className={cn(
+                "truncate text-sm",
+                data.contractsBelowGoal.length > 0
+                  ? "text-amber-800/80"
+                  : "text-[var(--text-secondary)]"
+              )}
+            >
+              Maior impacto: {largestImpactText}
+            </p>
+          </div>
+          <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)] px-4 py-3">
+            <p className="flex items-center gap-2 text-xs font-semibold uppercase text-[var(--text-secondary)]">
+              <PackageOpen className="size-4" aria-hidden="true" />
+              Solicitações pendentes
+            </p>
+            <p className="mt-2 font-mono text-3xl font-semibold text-[var(--text-primary)]">
+              {data.pendingRequests}
+            </p>
+            <p className="text-sm text-[var(--text-secondary)]">
+              {data.delayedRequests.length} em contratos atrasados
+            </p>
+          </div>
         </div>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1.35fr_0.65fr]">
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(22rem,0.65fr)]">
         <Card className="border-[var(--border-color)] bg-[var(--card-bg)] shadow-[0_18px_42px_-32px_rgba(15,23,42,0.35)]">
           <CardHeader className="grid gap-2 border-b border-[var(--border-subtle)] sm:grid-cols-[1fr_auto] sm:items-start">
             <div>
               <CardTitle className="flex items-center gap-2 text-base text-[var(--text-primary)]">
-                <AlertTriangle className="size-5 text-[var(--accent-color)]" />
-                Atenção imediata
+                <AlertTriangle
+                  aria-hidden="true"
+                  className="size-5 text-red-600"
+                />
+                Prioridades de hoje
               </CardTitle>
               <CardDescription className="text-[var(--text-secondary)]">
-                Prioridades ranqueadas por atraso, meta, efetivo e solicitações.
+                Contratos ranqueados por desvio, meta, efetivo e pendências.
               </CardDescription>
             </div>
-            <Badge className="w-fit border-[var(--border-color)] bg-[var(--accent-soft)] text-[var(--accent-color)]">
-              até {MAX_PRIORITIES} itens
+            <Badge className="w-fit border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-primary)]">
+              {periodLabel}
             </Badge>
           </CardHeader>
-          <CardContent className="flex flex-col gap-2 pt-4">
-            {data.priorities.length === 0 ? (
+          <CardContent className="p-0">
+            {decisionPriorities.length === 0 ? (
               <EmptyState
                 icon={CheckCircle2}
                 title="Sem prioridades imediatas"
                 description="Não há atrasos, metas críticas ou solicitações pendentes para este período."
               />
             ) : (
-              data.priorities.map((priority, index) => (
+              decisionPriorities.map((snapshot, index) => (
                 <div
-                  key={priority.id}
-                  className="grid gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-3 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-start"
+                  key={snapshot.summary.contract.id}
+                  className="grid gap-3 border-b border-[var(--border-subtle)] px-4 py-4 last:border-b-0 lg:grid-cols-[3rem_minmax(0,1fr)_7rem_7rem_7rem_6rem] lg:items-center"
                 >
-                  <span className="flex size-8 items-center justify-center rounded-lg bg-[var(--card-bg)] font-mono text-sm font-semibold text-[var(--text-primary)] ring-1 ring-[var(--border-color)]">
-                    {index + 1}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="truncate font-semibold text-[var(--text-primary)]">
-                      {priority.title}
-                    </p>
-                    <p className="text-xs text-[var(--text-secondary)]">{priority.context}</p>
-                    <p className="mt-2 text-sm leading-relaxed text-[var(--text-primary)]">
-                      {priority.reason}
-                    </p>
-                  </div>
-                  <Badge
-                    variant="outline"
+                  <span
                     className={cn(
-                      "w-fit",
-                      priorityStatusClassNames[priority.status]
+                      "flex size-9 items-center justify-center rounded-lg font-mono text-sm font-semibold ring-1",
+                      snapshot.status === "critical"
+                        ? "bg-red-50 text-red-700 ring-red-200"
+                        : "bg-amber-50 text-amber-800 ring-amber-200"
                     )}
                   >
-                    {priorityStatusLabels[priority.status]}
-                  </Badge>
+                    {index + 1}
+                  </span>
+                  <div className="min-w-0 space-y-1">
+                    <p className="font-semibold text-[var(--text-primary)]">
+                      {snapshot.summary.contract.name}
+                    </p>
+                    <p className="text-sm text-[var(--text-secondary)]">
+                      {getContractDisplayContext(snapshot.summary.contract)}
+                    </p>
+                    <p className="text-sm text-[var(--text-primary)] lg:hidden">
+                      {joinReasons(snapshot.reasons)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-[var(--text-secondary)]">Desvio</p>
+                    <p className="font-mono font-semibold text-red-700">
+                      {numberFormatter.format(snapshot.summary.progressGap)}%
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-[var(--text-secondary)]">Meta</p>
+                    <p className="font-mono font-semibold text-[var(--text-primary)]">
+                      {snapshot.belowGoalRows.length}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-[var(--text-secondary)]">Pendências</p>
+                    <p className="font-mono font-semibold text-[var(--text-primary)]">
+                      {snapshot.pendingRequests.length}
+                    </p>
+                  </div>
+                  <div className="flex lg:justify-end">
+                    <Badge
+                      variant="outline"
+                      className={priorityStatusClassNames[snapshot.status]}
+                    >
+                      {priorityStatusLabels[snapshot.status]}
+                    </Badge>
+                  </div>
                 </div>
               ))
             )}
@@ -601,82 +826,153 @@ export function Dashboard({ currentUser }: DashboardProps) {
 
         <Card className="border-[var(--border-color)] bg-[var(--card-bg)] shadow-[0_18px_42px_-32px_rgba(15,23,42,0.35)]">
           <CardHeader className="border-b border-[var(--border-subtle)]">
-            <CardTitle className="text-base text-[var(--text-primary)]">
-              Próxima ação sugerida
+            <CardTitle className="flex items-center gap-2 text-base text-[var(--text-primary)]">
+              <ShieldCheck className="size-5 text-[var(--accent-color)]" aria-hidden="true" />
+              Saúde da operação
             </CardTitle>
             <CardDescription className="text-[var(--text-secondary)]">
-              Leitura resumida para orientar a coordenação.
+              Visão geral dos contratos ativos.
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-col gap-3 pt-4">
-            {data.priorities[0] ? (
-              <>
-                <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] p-4">
-                  <p className="text-xs font-semibold uppercase text-[var(--text-secondary)]">
-                    Priorizar agora
-                  </p>
-                  <p className="mt-2 font-semibold text-[var(--text-primary)]">
-                    {data.priorities[0].title}
-                  </p>
-                  <p className="mt-2 text-sm leading-relaxed text-[var(--text-primary)]">
-                    {data.priorities[0].reason}
-                  </p>
+          <CardContent className="grid gap-4 pt-4">
+            <div className="grid grid-cols-[8rem_1fr] items-center gap-4">
+              <div
+                className="relative size-32 rounded-full"
+                style={{ background: healthGradient }}
+                aria-label={`${healthyPercentage}% dos contratos saudáveis`}
+              >
+                <div className="absolute inset-4 grid place-items-center rounded-full bg-[var(--card-bg)] text-center ring-1 ring-[var(--border-subtle)]">
+                  <span className="font-mono text-2xl font-semibold text-[var(--text-primary)]">
+                    {hasActiveContracts ? `${healthyPercentage}%` : "N/D"}
+                  </span>
+                  <span className="text-xs text-[var(--text-secondary)]">saudável</span>
                 </div>
-                <p className="text-sm leading-relaxed text-[var(--text-secondary)]">
-                  A ordem considera desvio de cronograma, execução abaixo da
-                  meta, efetivo e solicitações pendentes no mesmo contexto.
-                </p>
-              </>
-            ) : (
-              <EmptyState
-                icon={CheckCircle2}
-                title="Acompanhar rotina"
-                description="A operação não indica ação emergencial no período selecionado."
-              />
-            )}
+              </div>
+              <div className="grid gap-2">
+                {(["healthy", "attention", "critical", "no-data"] as const).map(
+                  (status) => (
+                    <div
+                      key={status}
+                      className="grid grid-cols-[1rem_1fr_auto] items-center gap-2 text-sm"
+                    >
+                      <span
+                        className={cn("size-2.5 rounded-full", healthClassNames[status])}
+                      />
+                      <span className="text-[var(--text-secondary)]">
+                        {healthLabels[status]}
+                      </span>
+                      <strong className="font-mono text-[var(--text-primary)]">
+                        {data.healthCounts[status]}
+                      </strong>
+                    </div>
+                  )
+                )}
+              </div>
+            </div>
+            <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-3">
+              <p className="text-xs font-semibold uppercase text-[var(--text-secondary)]">
+                Próxima ação
+              </p>
+              <p className="mt-2 text-sm font-medium text-[var(--text-primary)]">
+                {topPriority
+                  ? topPriority.summary.contract.name
+                  : "Acompanhar rotina operacional"}
+              </p>
+              <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                {topPriority
+                  ? joinReasons(topPriority.reasons)
+                  : "Sem contratos críticos no período selecionado."}
+              </p>
+            </div>
           </CardContent>
         </Card>
       </section>
 
-      <Card className="border-[var(--border-color)] bg-[var(--card-bg)] shadow-[0_18px_42px_-32px_rgba(15,23,42,0.35)]">
-        <CardHeader className="grid gap-2 border-b border-[var(--border-subtle)] sm:grid-cols-[1fr_auto] sm:items-start">
-          <div>
-            <CardTitle className="text-base text-[var(--text-primary)]">
-              Ritmo da operação
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <Card className="border-[var(--border-color)] bg-[var(--card-bg)] shadow-[0_18px_42px_-32px_rgba(15,23,42,0.35)]">
+          <CardHeader className="border-b border-[var(--border-subtle)]">
+            <CardTitle className="flex items-center gap-2 text-base text-[var(--text-primary)]">
+              <Truck className="size-5 text-[var(--accent-color)]" aria-hidden="true" />
+              Pendências logísticas
             </CardTitle>
             <CardDescription className="text-[var(--text-secondary)]">
-              Contratos ativos mais fora do esperado, do maior atraso ao menor.
+              Solicitações pendentes ordenadas pela data de entrega.
             </CardDescription>
-          </div>
-          <Badge className="w-fit border-[var(--border-color)] bg-[var(--accent-soft)] text-[var(--accent-color)]">
-            {data.contractsOnTrack} de {data.activeContracts} no ritmo
-          </Badge>
-        </CardHeader>
-        <CardContent className="grid gap-4 pt-4 lg:grid-cols-[0.9fr_1.1fr]">
-          <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] p-4">
-            <p className="text-sm text-[var(--text-secondary)]">Resumo do ritmo</p>
-            <p className="mt-3 font-mono text-4xl font-semibold tracking-tight text-[var(--text-primary)]">
-              {data.contractsOnTrack}/{data.activeContracts}
-            </p>
-            <p className="mt-2 text-sm leading-relaxed text-[var(--text-secondary)]">
-              Contratos ativos dentro do esperado contra o cronograma geral.
-              Os desvios relevantes aparecem como prioridades quando combinados
-              com meta, efetivo ou solicitações.
-            </p>
-          </div>
-          <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] p-4">
-            {rhythmItems.length === 0 ? (
+          </CardHeader>
+          <CardContent className="p-0">
+            {data.pendingLogistics.length === 0 ? (
               <EmptyState
-                icon={Briefcase}
-                title="Sem contratos para comparar"
-                description="Os contratos ativos aparecerão aqui com sua situação de ritmo."
+                icon={CheckCircle2}
+                title="Sem pendências logísticas"
+                description="Não há solicitações pendentes no período selecionado."
               />
             ) : (
-              <HorizontalBarChart items={rhythmItems} />
+              data.pendingLogistics.map(({ request, contract, dueLabel, dueTone }) => (
+                <div
+                  key={request.id}
+                  className="grid gap-2 border-b border-[var(--border-subtle)] px-4 py-3 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_auto]"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium text-[var(--text-primary)]">
+                      {request.title || "Solicitação operacional"}
+                    </p>
+                    <p className="truncate text-sm text-[var(--text-secondary)]">
+                      {contract?.name ?? "Contrato não encontrado"}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                    <Badge variant="outline" className={dueToneClassNames[dueTone]}>
+                      {dueLabel}
+                    </Badge>
+                    <span className="inline-flex items-center gap-1 text-sm text-[var(--text-secondary)]">
+                      <Clock3 className="size-3.5" aria-hidden="true" />
+                      {formatDateBR(request.date)}
+                    </span>
+                  </div>
+                </div>
+              ))
             )}
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+
+        <Card className="border-[var(--border-color)] bg-[var(--card-bg)] shadow-[0_18px_42px_-32px_rgba(15,23,42,0.35)]">
+          <CardHeader className="border-b border-[var(--border-subtle)]">
+            <CardTitle className="flex items-center gap-2 text-base text-[var(--text-primary)]">
+              <ListChecks className="size-5 text-[var(--accent-color)]" aria-hidden="true" />
+              Resumo operacional
+            </CardTitle>
+            <CardDescription className="text-[var(--text-secondary)]">
+              Sinais que ajudam a priorizar a rotina do coordenador.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 pt-4 sm:grid-cols-2">
+            <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-3">
+              <p className="text-sm text-[var(--text-secondary)]">No ritmo</p>
+              <p className="mt-1 font-mono text-2xl font-semibold text-[var(--text-primary)]">
+                {data.contractsOnTrack}/{data.activeContracts}
+              </p>
+            </div>
+            <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-3">
+              <p className="text-sm text-[var(--text-secondary)]">Efetivo divergente</p>
+              <p className="mt-1 font-mono text-2xl font-semibold text-[var(--text-primary)]">
+                {data.workforceDivergenceContracts.length}
+              </p>
+            </div>
+            <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-3">
+              <p className="text-sm text-[var(--text-secondary)]">Itens a revisar</p>
+              <p className="mt-1 font-mono text-2xl font-semibold text-[var(--text-primary)]">
+                {data.pendingReviewItems}
+              </p>
+            </div>
+            <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-3">
+              <p className="text-sm text-[var(--text-secondary)]">Fora do esperado</p>
+              <p className="mt-1 font-mono text-2xl font-semibold text-red-700">
+                {data.delayedContracts.length}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </section>
     </div>
   )
 }

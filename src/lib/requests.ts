@@ -36,6 +36,9 @@ export type OperationalRequestFormData = Pick<
 
 export const REQUESTS_STORAGE_KEY = "transagua:operational-requests"
 
+export const REQUEST_DELIVERY_DATE_NOTICE =
+  "As solicitações precisam ser feitas com antecedência para permitir o planejamento da logística. Informe a Data de Entrega a partir de amanhã."
+
 export const requestStatusOptions: Array<{
   value: RequestStatus
   label: string
@@ -45,6 +48,26 @@ export const requestStatusOptions: Array<{
   { value: "atendido", label: "Atendido" },
 ]
 
+export function getMinimumOperationalRequestDate() {
+  const minimumDate = new Date()
+  minimumDate.setDate(minimumDate.getDate() + 1)
+
+  const year = minimumDate.getFullYear()
+  const month = String(minimumDate.getMonth() + 1).padStart(2, "0")
+  const day = String(minimumDate.getDate()).padStart(2, "0")
+
+  return `${year}-${month}-${day}`
+}
+
+export function isOperationalRequestDeliveryDateAllowed(date: string) {
+  const normalizedDate = normalizeDateForInput(date)
+
+  return (
+    /^\d{4}-\d{2}-\d{2}$/.test(normalizedDate) &&
+    normalizedDate >= getMinimumOperationalRequestDate()
+  )
+}
+
 export function createEmptyOperationalRequestForm(
   contractId = ""
 ): OperationalRequestFormData {
@@ -52,7 +75,7 @@ export function createEmptyOperationalRequestForm(
     title: "",
     description: "",
     contractId,
-    date: new Date().toISOString().slice(0, 10),
+    date: getMinimumOperationalRequestDate(),
   }
 }
 

@@ -210,8 +210,20 @@ export function LancamentoDiario({ currentUser }: LancamentoDiarioProps) {
     const errors: Record<string, string> = {}
 
     items.forEach((item) => {
-      const realizedDaily = Number(item.realizedDaily) || 0
+      const realizedDailyInput = item.realizedDaily.trim()
+      const realizedDaily = Number(realizedDailyInput)
       const dailyGoal = Number(item.dailyGoal) || 0
+
+      if (realizedDailyInput.length === 0) {
+        errors[item.serviceId] =
+          "Informe o realizado diário. Use 0 quando não houver execução."
+        return
+      }
+
+      if (!Number.isFinite(realizedDaily) || realizedDaily < 0) {
+        errors[item.serviceId] = "Informe um valor válido para o realizado diário."
+        return
+      }
 
       if (realizedDaily < dailyGoal && item.observation.trim().length === 0) {
         errors[item.serviceId] =
@@ -249,7 +261,7 @@ export function LancamentoDiario({ currentUser }: LancamentoDiarioProps) {
       })),
       items: items.map((item) => ({
         serviceId: item.serviceId,
-        realizedDaily: Number(item.realizedDaily) || 0,
+        realizedDaily: Number(item.realizedDaily),
         observation: item.observation.trim(),
         deviationReason: item.deviationReason,
         reviewObservation: item.reviewObservation,
@@ -291,6 +303,11 @@ export function LancamentoDiario({ currentUser }: LancamentoDiarioProps) {
 
     if (executionIsClosed) {
       setFeedback("Este expediente já foi fechado.")
+      return
+    }
+
+    if (!validateItems()) {
+      setFeedback("Revise os serviços antes de fechar o dia.")
       return
     }
 
@@ -500,9 +517,12 @@ export function LancamentoDiario({ currentUser }: LancamentoDiarioProps) {
 
               <div className="grid gap-4 xl:grid-cols-2">
                 {items.map((item) => {
-                  const realizedDaily = Number(item.realizedDaily) || 0
+                  const hasRealizedDailyInput = item.realizedDaily.trim().length > 0
+                  const realizedDaily = hasRealizedDailyInput
+                    ? Number(item.realizedDaily) || 0
+                    : 0
                   const dailyGoal = Number(item.dailyGoal) || 0
-                  const isBelowGoal = realizedDaily < dailyGoal
+                  const isBelowGoal = hasRealizedDailyInput && realizedDaily < dailyGoal
                   const dailyDifference = realizedDaily - dailyGoal
                   const dailyPercentage =
                     dailyGoal > 0 ? (realizedDaily / dailyGoal) * 100 : 0
@@ -566,19 +586,25 @@ export function LancamentoDiario({ currentUser }: LancamentoDiarioProps) {
                               type="number"
                               min="0"
                               step="0.01"
-                              value={getNumberInputValue(item.realizedDaily)}
+                              value={item.realizedDaily}
                               onChange={(event) =>
                                 updateItem(
                                   item.serviceId,
                                   "realizedDaily",
-                                  event.target.value === ""
-                                    ? 0
-                                    : Number(event.target.value)
+                                  event.target.value
                                 )
                               }
                               required
                               disabled={executionIsClosed}
                             />
+                            {fieldErrors[item.serviceId]?.startsWith("Informe") && (
+                              <p className="text-sm text-destructive">
+                                {fieldErrors[item.serviceId]}
+                              </p>
+                            )}
+                            <p className="text-xs text-muted-foreground">
+                              Digite 0 quando o serviço não tiver execução nesta data.
+                            </p>
                           </Field>
 
                           <Field>
@@ -635,7 +661,9 @@ export function LancamentoDiario({ currentUser }: LancamentoDiarioProps) {
                               }
                               disabled={executionIsClosed}
                             />
-                            {fieldErrors[item.serviceId] && (
+                            {fieldErrors[item.serviceId]?.startsWith(
+                              "Observação"
+                            ) && (
                               <p className="text-sm text-destructive">
                                 {fieldErrors[item.serviceId]}
                               </p>

@@ -50,12 +50,13 @@ export type DailyExecution = {
   updatedAt: string
 }
 
-export type DailyExecutionFormItem = DailyExecutionItem & {
+export type DailyExecutionFormItem = Omit<DailyExecutionItem, "realizedDaily"> & {
   serviceName: string
   unit: string
   dailyGoal: number
   totalQuantity: number
   completedQuantity: number
+  realizedDaily: string
 }
 
 export const DAILY_EXECUTIONS_STORAGE_KEY = "transagua:daily-executions"
@@ -216,7 +217,10 @@ export function buildExecutionItems(
       dailyGoal: Number(service.dailyGoal) || 0,
       totalQuantity: Number(service.totalQuantity) || 0,
       completedQuantity: Number(service.completedQuantity) || 0,
-      realizedDaily: existingItem?.realizedDaily ?? 0,
+      realizedDaily:
+        existingItem?.realizedDaily === undefined
+          ? ""
+          : String(existingItem.realizedDaily),
       observation: existingItem?.observation ?? "",
       deviationReason: existingItem?.deviationReason ?? "",
       reviewObservation: existingItem?.reviewObservation ?? "",

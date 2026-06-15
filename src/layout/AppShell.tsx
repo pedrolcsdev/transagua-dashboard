@@ -14,9 +14,10 @@ type AppShellProps = {
   user: AppUser
   profile: UserProfile
   onUserChange: (user: AppUser) => void
+  onLogout: () => void
 }
 
-export function AppShell({ user, profile, onUserChange }: AppShellProps) {
+export function AppShell({ user, profile, onUserChange, onLogout }: AppShellProps) {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
@@ -50,6 +51,12 @@ export function AppShell({ user, profile, onUserChange }: AppShellProps) {
 
   return (
     <div className="min-h-svh bg-[var(--bg-primary)] text-[var(--text-primary)]">
+      <a
+        href="#app-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:rounded-lg focus:bg-primary focus:px-3 focus:py-2 focus:text-primary-foreground focus:shadow-lg"
+      >
+        Ir para o conteúdo
+      </a>
       <div className="flex min-h-svh">
         <aside
           className={cn(
@@ -79,10 +86,14 @@ export function AppShell({ user, profile, onUserChange }: AppShellProps) {
             user={user}
             onMenuClick={() => setIsMobileSidebarOpen(true)}
             onUserChange={onUserChange}
+            onLogout={onLogout}
           />
 
-          <main className="flex-1 px-3 py-4 sm:px-5 lg:px-6 lg:py-5">
-            <div className="w-full">
+          <main
+            id="app-content"
+            className="flex-1 scroll-mt-24 px-3 py-4 sm:px-5 lg:px-6 lg:py-5"
+          >
+            <div className="mx-auto w-full max-w-[96rem]">
               <Outlet />
             </div>
           </main>

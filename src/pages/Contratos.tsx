@@ -606,6 +606,7 @@ export function Contratos({ currentUser }: ContratosProps) {
                               size="icon-sm"
                               onClick={() => editContract(contract)}
                               title="Editar contrato"
+                              aria-label="Editar contrato"
                             >
                               <Edit3 />
                               <span className="sr-only">Editar contrato</span>
@@ -616,6 +617,7 @@ export function Contratos({ currentUser }: ContratosProps) {
                               size="icon-sm"
                               onClick={() => deleteContract(contract.id)}
                               title="Excluir contrato"
+                              aria-label="Excluir contrato"
                             >
                               <Trash2 />
                               <span className="sr-only">Excluir contrato</span>

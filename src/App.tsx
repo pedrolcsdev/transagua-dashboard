@@ -11,6 +11,7 @@ import {
 import { AppShell } from "@/layout/AppShell"
 import { navigationByProfile } from "@/lib/navigation"
 import {
+  AUTH_STORAGE_KEY,
   DEFAULT_USER_ID,
   getStoredUser,
   getStoredProfile,
@@ -22,6 +23,7 @@ import {
 import { Contratos } from "@/pages/Contratos"
 import { Dashboard } from "@/pages/Dashboard"
 import { LancamentoDiario } from "@/pages/LancamentoDiario"
+import { Login } from "@/pages/Login"
 import { Relatorios } from "@/pages/Relatorios"
 import { Revisao } from "@/pages/Revisao"
 import { Solicitacoes } from "@/pages/Solicitacoes"
@@ -30,6 +32,9 @@ import { Usuarios } from "@/pages/Usuarios"
 
 function ShellRoutes() {
   const [user, setUser] = useState<AppUser>(() => getStoredUser())
+  const [isAuthenticated, setIsAuthenticated] = useState(
+    () => localStorage.getItem(AUTH_STORAGE_KEY) === "true"
+  )
   const navigate = useNavigate()
   const location = useLocation()
   const profile = user.profile
@@ -45,15 +50,61 @@ function ShellRoutes() {
   }, [user])
 
   useEffect(() => {
+    if (!isAuthenticated || location.pathname === "/login") {
+      return
+    }
+
     if (!allowedPaths.includes(location.pathname)) {
       navigate(allowedPaths[0] ?? "/dashboard", { replace: true })
     }
-  }, [allowedPaths, location.pathname, navigate])
+  }, [allowedPaths, isAuthenticated, location.pathname, navigate])
+
+  function login(nextUser: AppUser) {
+    setUser(nextUser)
+    setIsAuthenticated(true)
+    localStorage.setItem(AUTH_STORAGE_KEY, "true")
+    localStorage.setItem(USER_STORAGE_KEY, nextUser.id)
+    localStorage.setItem(PROFILE_STORAGE_KEY, nextUser.profile)
+    navigate(navigationByProfile[nextUser.profile][0]?.path ?? "/dashboard", {
+      replace: true,
+    })
+  }
+
+  function logout() {
+    setIsAuthenticated(false)
+    localStorage.removeItem(AUTH_STORAGE_KEY)
+    navigate("/login", { replace: true })
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <Routes>
+        <Route path="/login" element={<Login onLogin={login} />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    )
+  }
 
   return (
     <Routes>
       <Route
-        element={<AppShell user={user} profile={profile} onUserChange={setUser} />}
+        path="/login"
+        element={
+          <Navigate
+            to={navigationByProfile[profile][0]?.path ?? "/dashboard"}
+            replace
+          />
+        }
+      />
+      <Route
+        element={
+          <AppShell
+            user={user}
+            profile={profile}
+            onUserChange={setUser}
+            onLogout={logout}
+          />
+        }
       >
         <Route
           index

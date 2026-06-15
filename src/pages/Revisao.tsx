@@ -81,7 +81,7 @@ type RevisaoProps = {
 }
 
 function getNumberInputValue(value: number) {
-  return value === 0 ? "" : String(value)
+  return String(value)
 }
 
 export function Revisao({ currentUser }: RevisaoProps) {
@@ -363,6 +363,10 @@ export function Revisao({ currentUser }: RevisaoProps) {
                 const realized = Number(item.realizedDaily) || 0
                 const performance = getPerformanceStatus(realized, goal)
                 const rowKey = getRowKey(execution.id, item.serviceId)
+                const reviewRealizedValue =
+                  realizedDrafts[rowKey] ?? getNumberInputValue(item.realizedDaily)
+                const hasRealizedChange =
+                  Number(reviewRealizedValue) !== (Number(item.realizedDaily) || 0)
                 const workforcePlanned = execution.workforceActual.reduce(
                   (total, role) => total + (Number(role.plannedCount) || 0),
                   0
@@ -432,7 +436,14 @@ export function Revisao({ currentUser }: RevisaoProps) {
                       </div>
                     </div>
 
-                    <div className="mt-4 grid gap-4 lg:grid-cols-[220px_220px_1fr_auto] lg:items-end">
+                    <div
+                      className={cn(
+                        "mt-4 grid gap-4 lg:items-end",
+                        hasRealizedChange
+                          ? "lg:grid-cols-[220px_220px_1fr_auto]"
+                          : "lg:grid-cols-[220px_1fr_auto]"
+                      )}
+                    >
                       <FieldGroup>
                         <Field>
                           <FieldLabel htmlFor={`review-realized-${item.serviceId}`}>
@@ -443,36 +454,40 @@ export function Revisao({ currentUser }: RevisaoProps) {
                             type="number"
                             min="0"
                             step="0.01"
-                            value={
-                              realizedDrafts[rowKey] ??
-                              getNumberInputValue(item.realizedDaily)
-                            }
-                            onChange={(event) =>
+                            value={reviewRealizedValue}
+                            onChange={(event) => {
                               setRealizedDrafts((current) => ({
                                 ...current,
                                 [rowKey]: event.target.value,
                               }))
-                            }
+                              setRowErrors((current) => {
+                                const nextErrors = { ...current }
+                                delete nextErrors[rowKey]
+                                return nextErrors
+                              })
+                            }}
                           />
                         </Field>
                       </FieldGroup>
 
-                      <Field>
-                        <FieldLabel htmlFor={`review-reason-${item.serviceId}`}>
-                          Motivo da correção
-                        </FieldLabel>
-                        <Input
-                          id={`review-reason-${item.serviceId}`}
-                          value={reviewReasonDrafts[rowKey] ?? ""}
-                          onChange={(event) =>
-                            setReviewReasonDrafts((current) => ({
-                              ...current,
-                              [rowKey]: event.target.value,
-                            }))
-                          }
-                          placeholder="Ex.: medição conferida em campo"
-                        />
-                      </Field>
+                      {hasRealizedChange && (
+                        <Field>
+                          <FieldLabel htmlFor={`review-reason-${item.serviceId}`}>
+                            Motivo da correção
+                          </FieldLabel>
+                          <Input
+                            id={`review-reason-${item.serviceId}`}
+                            value={reviewReasonDrafts[rowKey] ?? ""}
+                            onChange={(event) =>
+                              setReviewReasonDrafts((current) => ({
+                                ...current,
+                                [rowKey]: event.target.value,
+                              }))
+                            }
+                            placeholder="Ex.: medição conferida em campo"
+                          />
+                        </Field>
+                      )}
 
                       <Field>
                         <FieldLabel htmlFor={`review-note-${item.serviceId}`}>

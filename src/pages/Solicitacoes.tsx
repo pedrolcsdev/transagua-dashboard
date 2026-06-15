@@ -30,7 +30,10 @@ import { getProfileLabel, getUserById, type AppUser } from "@/lib/profile"
 import {
   createEmptyOperationalRequestForm,
   createOperationalRequest,
+  getMinimumOperationalRequestDate,
+  isOperationalRequestDeliveryDateAllowed,
   loadOperationalRequests,
+  REQUEST_DELIVERY_DATE_NOTICE,
   requestStatusOptions,
   saveOperationalRequests,
   type OperationalRequest,
@@ -81,6 +84,7 @@ export function Solicitacoes({ currentUser }: SolicitacoesProps) {
     )
   const [editingRequestId, setEditingRequestId] = useState<string | null>(null)
   const [editNote, setEditNote] = useState("")
+  const [requestError, setRequestError] = useState("")
   const [editError, setEditError] = useState("")
   const [statusDrafts, setStatusDrafts] = useState<Record<string, RequestStatus>>({})
   const [statusNotes, setStatusNotes] = useState<Record<string, string>>({})
@@ -91,6 +95,7 @@ export function Solicitacoes({ currentUser }: SolicitacoesProps) {
   const canUpdateStatus = hasCapability(profile, "requests.update-status")
   const editingRequest = requests.find((request) => request.id === editingRequestId)
   const showSidebarCard = canCreateRequests || Boolean(editingRequest)
+  const minimumRequestDate = getMinimumOperationalRequestDate()
 
   const pendingCount = useMemo(
     () =>
@@ -121,6 +126,7 @@ export function Solicitacoes({ currentUser }: SolicitacoesProps) {
       ...currentFormData,
       [field]: value,
     }))
+    setRequestError("")
   }
 
   function updateEditField<K extends keyof OperationalRequestFormData>(
@@ -138,6 +144,11 @@ export function Solicitacoes({ currentUser }: SolicitacoesProps) {
     event.preventDefault()
 
     if (!canCreateRequests) {
+      return
+    }
+
+    if (!isOperationalRequestDeliveryDateAllowed(formData.date)) {
+      setRequestError(REQUEST_DELIVERY_DATE_NOTICE)
       return
     }
 
@@ -183,6 +194,11 @@ export function Solicitacoes({ currentUser }: SolicitacoesProps) {
 
     if (normalizedNote.length === 0) {
       setEditError("Informe a observação da edição antes de salvar.")
+      return
+    }
+
+    if (!isOperationalRequestDeliveryDateAllowed(editFormData.date)) {
+      setEditError(REQUEST_DELIVERY_DATE_NOTICE)
       return
     }
 
@@ -309,7 +325,7 @@ export function Solicitacoes({ currentUser }: SolicitacoesProps) {
         }
       >
         {showSidebarCard ? (
-          <Card className="rounded-lg">
+          <Card className="rounded-lg xl:sticky xl:top-24 xl:self-start">
             <CardHeader>
               <CardTitle>
                 {canCreateRequests ? "Nova solicitação" : "Editar solicitação"}
@@ -331,7 +347,7 @@ export function Solicitacoes({ currentUser }: SolicitacoesProps) {
                       id="request-title"
                       value={formData.title}
                       onChange={(event) => updateField("title", event.target.value)}
-                      placeholder="Combustível, tubos, bombas..."
+                      placeholder="Combustível, tubos, bombas…"
                       required
                     />
                   </Field>
@@ -359,14 +375,23 @@ export function Solicitacoes({ currentUser }: SolicitacoesProps) {
                   </Field>
 
                   <Field>
-                    <FieldLabel htmlFor="request-date">Data</FieldLabel>
+                    <FieldLabel htmlFor="request-date">Data de Entrega</FieldLabel>
                     <Input
                       id="request-date"
                       type="date"
+                      min={minimumRequestDate}
                       value={formData.date}
                       onChange={(event) => updateField("date", event.target.value)}
+                      aria-describedby="request-date-help"
                       required
                     />
+                    <p
+                      id="request-date-help"
+                      className="text-xs leading-relaxed text-muted-foreground"
+                    >
+                      Informe quando o material, equipamento ou recurso deve ser
+                      entregue na obra. {REQUEST_DELIVERY_DATE_NOTICE}
+                    </p>
                   </Field>
 
                   <Field>
@@ -378,7 +403,7 @@ export function Solicitacoes({ currentUser }: SolicitacoesProps) {
                       onChange={(event) =>
                         updateField("description", event.target.value)
                       }
-                      placeholder="Detalhe a necessidade da obra"
+                      placeholder="Detalhe a necessidade da obra…"
                       required
                     />
                   </Field>
@@ -387,6 +412,12 @@ export function Solicitacoes({ currentUser }: SolicitacoesProps) {
                 {feedback && (
                   <div className="rounded-lg border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
                     {feedback}
+                  </div>
+                )}
+
+                {requestError && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    {requestError}
                   </div>
                 )}
               </CardContent>
@@ -433,16 +464,27 @@ export function Solicitacoes({ currentUser }: SolicitacoesProps) {
                   </Field>
 
                   <Field>
-                    <FieldLabel htmlFor="edit-request-date">Data</FieldLabel>
+                    <FieldLabel htmlFor="edit-request-date">
+                      Data de Entrega
+                    </FieldLabel>
                     <Input
                       id="edit-request-date"
                       type="date"
+                      min={minimumRequestDate}
                       value={editFormData.date}
                       onChange={(event) =>
                         updateEditField("date", event.target.value)
                       }
+                      aria-describedby="edit-request-date-help"
                       required
                     />
+                    <p
+                      id="edit-request-date-help"
+                      className="text-xs leading-relaxed text-muted-foreground"
+                    >
+                      Informe quando o material, equipamento ou recurso deve ser
+                      entregue na obra. {REQUEST_DELIVERY_DATE_NOTICE}
+                    </p>
                   </Field>
 
                   <Field>
@@ -472,7 +514,7 @@ export function Solicitacoes({ currentUser }: SolicitacoesProps) {
                         setEditNote(event.target.value)
                         setEditError("")
                       }}
-                      placeholder="Ex.: adicionado cimento porque não foi solicitado pelo Líder"
+                      placeholder="Ex.: adicionado cimento porque não foi solicitado pelo Líder…"
                     />
                   </Field>
                 </FieldGroup>
@@ -523,12 +565,13 @@ export function Solicitacoes({ currentUser }: SolicitacoesProps) {
                 description="As demandas entre Líder e Logística aparecerão aqui."
               />
             ) : (
+              <div className="[&_[data-slot=table-container]]:overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Título</TableHead>
                     <TableHead>Contrato</TableHead>
-                    <TableHead>Data</TableHead>
+                    <TableHead>Data de Entrega</TableHead>
                     <TableHead>Status</TableHead>
                     {!canUpdateStatus && <TableHead>Histórico</TableHead>}
                     <TableHead className="text-right">Ações</TableHead>
@@ -644,6 +687,7 @@ export function Solicitacoes({ currentUser }: SolicitacoesProps) {
                   ))}
                 </TableBody>
               </Table>
+              </div>
             )}
           </CardContent>
         </Card>
